@@ -118,7 +118,7 @@ run,preset,section,avg_fps,low1_fps,p99_ms,gpu_ms_avg,cpu_ms_avg,backend,device,
 | 描画一致 | Linux 版と APK の固定カメラ 5 点 | PSNR 40 dB 以上 | `emulator.yml`、実機は `tools/emulator_test.sh` |
 | 実機 | ハイエンド / ミドル / Mali / 下限（Vulkan 1.1・RAM 6GB）で 3 回 | 有効 3 回、変動係数 3% 以下 | 手動 |
 
-タグ `v*` を push すると、テスト → 画像差分 → APK / Linux 版ビルド → apksigner で署名 → Release 作成まで自動で走る
+タグ `v*` を push すると、テスト → APK / Linux 版ビルド → apksigner で署名 → Release 作成まで自動で走る
 （署名鍵は Secrets。詳しくは `.github/workflows/release.yml`）。
 
 ## ライセンスと出典

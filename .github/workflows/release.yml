@@ -1,4 +1,4 @@
-# タグ v* の push で：Linux版単体テスト → 画像差分チェック（16KBエミュレータ）→ APK/Linux版ビルド → 署名 → Release作成
+# タグ v* の push で：Linux版単体テスト → APK/Linux版ビルド → 署名 → Release作成
 #
 # 必要な Secrets（リポジトリの Settings → Secrets and variables → Actions）:
 #   BENCHDECK_KEYSTORE_B64     リリース用 keystore を base64 にしたもの（keystore はリポジトリに入れない）
@@ -18,11 +18,11 @@ jobs:
   test:
     uses: ./.github/workflows/ci.yml
 
-  emulator:
-    uses: ./.github/workflows/emulator.yml
+  # エミュレータ試験（emulator.yml）はリリースを止めない。起動確認は実機で行う。
+  # 必要なら Actions から手動で走らせる（workflow_dispatch）か、毎週の定期実行の結果を見る
 
   build:
-    needs: [test, emulator]
+    needs: [test]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
