@@ -4,6 +4,8 @@
 material {
     name : facade,
     shadingModel : lit,
+    // UV は手続き生成で自分で決めた値（外壁は v = 地上からの高さ[m]）。Filament 既定の上下反転（v → 1 - v）を切る
+    flipUV : false,
     requires : [ uv0, custom0, tangents ],
     parameters : [
         { type : sampler2d, name : wallAlbedo },

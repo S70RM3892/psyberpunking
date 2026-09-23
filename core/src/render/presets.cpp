@@ -63,9 +63,10 @@ void applyPreset(Engine& engine, View& view, const Preset& p, const SceneConfig&
     fog.distance = 20.0f;
     fog.density = 0.012f;
     fog.height = 0.0f;
-    fog.heightFalloff = 0.045f;
+    // 高さ方向の減衰を緩めて、高層の上の方まで街明かりのもやをかける（遠景の奥行き）
+    fog.heightFalloff = 0.02f;
     fog.maximumOpacity = 0.92f;
-    fog.color = {0.12f, 0.06f, 0.10f};
+    fog.color = {0.30f, 0.16f, 0.26f};  // 雨雲に映るネオンの赤紫
     fog.inScatteringStart = 10.0f;
     fog.inScatteringSize = 40.0f;
     view.setFogOptions(fog);
