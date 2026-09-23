@@ -1,0 +1,119 @@
+# push / PR ごとの確認：Linux版の単体テスト・煙テスト・固定カメラの撮影、APK のビルドと16KB整列の検査
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+    tags-ignore: ["v*"]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: Linux build, unit tests, headless shots
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libc++-dev libc++abi-dev libsdl2-dev ninja-build \
+            mesa-vulkan-drivers libvulkan1 python3-pil python3-numpy
+
+      - name: Cache Filament
+        uses: actions/cache@v4
+        with:
+          path: third_party/filament/.cache
+          key: filament-${{ hashFiles('tools/fetch_filament.sh') }}
+
+      - name: Fetch Filament (linux)
+        run: tools/fetch_filament.sh linux
+
+      - name: Configure and build
+        run: |
+          CC=clang CXX=clang++ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build
+
+      - name: Unit tests
+        run: ctest --test-dir build --output-on-failure
+
+      # Vulkan はソフトウェア実装（lavapipe）。速度は測れないが、描画・計測・出力の経路は全部通る
+      - name: Smoke run (low preset, 1 short lap)
+        env:
+          VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.json
+        run: |
+          build/benchdeck --headless --preset low --laps 1 --no-warmup --lap-seconds 4 --out results
+          python3 - <<'EOF'
+          import csv, glob, json
+          j = json.load(open(sorted(glob.glob("results/*.json"))[-1]))
+          assert j["valid_laps"] == 1, j
+          assert j["timing_method"] == "gpu_frame_duration", j["timing_method"]
+          assert j["summary"]["frames"] > 0
+          rows = list(csv.reader(open(sorted(glob.glob("results/*.csv"))[-1])))
+          assert rows[0][0] == "run" and len(rows) > 1
+          print("smoke OK:", j["summary"])
+          EOF
+
+      - name: Fixed-camera shots (5 points)
+        env:
+          VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.json
+        run: |
+          build/benchdeck --headless --shots shots/run1
+          build/benchdeck --headless --shots shots/run2
+          # 同じバイナリ・同じ入力なら画素まで一致すること（決定性）
+          python3 tools/imagediff.py shots/run1 shots/run2 --threshold 99
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-shots
+          path: shots/run1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-results
+          path: results
+
+  android:
+    name: APK build and 16 KB page checks
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: android-actions/setup-android@v3
+      - name: Install NDK / CMake
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.14206865" "cmake;3.31.6"
+
+      - name: Cache Filament
+        uses: actions/cache@v4
+        with:
+          path: third_party/filament/.cache
+          key: filament-${{ hashFiles('tools/fetch_filament.sh') }}
+      - name: Fetch Filament (linux tools + android libs)
+        run: tools/fetch_filament.sh
+
+      - name: Build debug APK
+        working-directory: android
+        run: ./gradlew --no-daemon assembleDebug
+
+      - name: Check 16 KB alignment
+        run: |
+          APK=$(ls android/app/build/outputs/apk/debug/*.apk)
+          $ANDROID_HOME/build-tools/36.0.0/zipalign -c -P 16 -v 4 "$APK" | tail -1
+          unzip -o -q "$APK" 'lib/*' -d apk
+          READELF=$ANDROID_HOME/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf
+          for so in apk/lib/*/*.so; do
+            bad=$($READELF -lW "$so" | awk '$1=="LOAD" && $NF!="0x4000" && $NF!="0x10000"')
+            if [ -n "$bad" ]; then echo "$so is not 16 KB aligned"; echo "$bad"; exit 1; fi
+            echo "$so: LOAD segments 16 KB aligned"
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk-debug
+          path: android/app/build/outputs/apk/debug/*.apk

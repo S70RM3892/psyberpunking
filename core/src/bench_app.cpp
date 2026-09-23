@@ -273,6 +273,9 @@ RunResult BenchApp::result(const DeviceInfo& device, const std::string& appVersi
         r.drawCallsAvg = s.drawSum / s.statFrames;
     }
     r.lightsVisibleMax = s.lightsMax;
+    RenderStats st = s.world.stats();
+    r.texturesFromAssets = st.texturesFromAssets;
+    r.iblFromAssets = st.iblFromAssets;
     return r;
 }
 

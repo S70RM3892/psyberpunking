@@ -13,16 +13,19 @@ material {
         { type : float, name : litRatio },
         { type : float, name : time }
     ],
-    variables : [ building, attrs ],
+    variables : [ { name : building, precision : high }, { name : attrs, precision : high } ],
     specularAntiAliasing : true,
     variantFilter : [ skinning ]
 }
 
 vertex {
+    #include "common.glsl"
+
     void materialVertex(inout MaterialVertexInputs material) {
         // 同じ型のビルでも窓の点き方を変えるため、インスタンスの位置からハッシュを作る
-        vec3 origin = (getUserWorldFromWorldMatrix() * vec4(getWorldFromModelMatrix()[3].xyz, 1.0)).xyz;
-        material.building = vec4(fract(sin(dot(floor(origin.xz), vec2(12.9898, 78.233))) * 43758.5453), 0.0, 0.0, 0.0);
+        // （sin を使うハッシュは GPU ごとに結果が違うので使わない。Linux版と APK の絵を揃えるため）
+        highp vec3 origin = (getUserWorldFromWorldMatrix() * vec4(getWorldFromModelMatrix()[3].xyz, 1.0)).xyz;
+        material.building = vec4(bdHash21(floor(origin.xz)), 0.0, 0.0, 0.0);
         material.attrs = getCustom0();
     }
 }
@@ -75,13 +78,13 @@ fragment {
         float part = c.y;
         float bay = max(c.z, 0.5);
         float fh = max(c.w, 2.5);
-        vec2 uv = getUV0();
+        highp vec2 uv = getUV0();
 
-        vec2 cell = floor(uv / vec2(bay, fh));
-        vec2 cellUv = fract(uv / vec2(bay, fh));
-        float bld = variable_building.x;
-        float rnd = bdHash31(vec3(cell, seed * 97.0 + bld * 311.0));
-        float floorRnd = bdHash21(vec2(cell.y, seed * 53.0 + bld * 17.0));
+        highp vec2 cell = floor(uv / vec2(bay, fh));
+        highp vec2 cellUv = fract(uv / vec2(bay, fh));
+        highp float bld = variable_building.x;
+        highp float rnd = bdHash31(vec3(cell, seed * 97.0 + bld * 311.0));
+        highp float floorRnd = bdHash21(vec2(cell.y, seed * 53.0 + bld * 17.0));
 
         // 窓をシェーダで描く壁は、開口の中ならガラス扱い
         if (part > 3.5) {
@@ -166,7 +169,9 @@ fragment {
             }
             material.baseColor = vec4(vec3(0.015, 0.018, 0.022), 1.0);
             material.metallic = 0.0;
-            material.roughness = 0.06;
+            // 店舗のガラスは手垢と結露で少し曇らせる（映り込みのノイズも抑える）
+            material.roughness = part > 2.5 ? 0.38 : 0.06;
+            material.reflectance = part > 2.5 ? 0.25 : 0.5;
             material.ambientOcclusion = 1.0;
             material.emissive = vec4(room * nits, 1.0);
         }

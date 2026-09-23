@@ -25,6 +25,8 @@ struct RenderStats {
     size_t triangles = 0;   // 推定（CPUの可視判定。影パスを含む）
     size_t drawCalls = 0;   // 推定（同上）
     int renderables = 0;
+    int texturesFromAssets = 0;  // CC0素材（KTX2）から読めたテクスチャの数（残りは実行時生成）
+    bool iblFromAssets = false;  // 環境光が cmgen の KTX か（false なら手続き生成）
 };
 
 class BenchApp {

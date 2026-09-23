@@ -305,6 +305,7 @@ std::string resultToJson(const RunResult& r, bool includeFrames) {
     j["render_stats"] = {{"lights_visible_max", r.lightsVisibleMax},
                          {"triangles_avg", std::lround(r.trianglesAvg)},
                          {"draw_calls_avg", std::lround(r.drawCallsAvg)}};
+    j["assets"] = {{"textures_from_files", r.texturesFromAssets}, {"ibl", r.iblFromAssets ? "cmgen_ktx" : "procedural"}};
     if (includeFrames) {
         // 列指向で持つ（行ごとのオブジェクトより3〜4倍小さい）
         json f;

@@ -26,7 +26,7 @@ fragment {
         prepareMaterial(material);
         vec3 d = normalize(variable_dir.xyz);
         float h = d.y;
-        float t = materialParams.time;
+        highp float t = materialParams.time;
 
         // 地平線の光害（マゼンタ〜オレンジ）から天頂の濃紺へ
         vec3 zenith = vec3(0.010, 0.012, 0.035);

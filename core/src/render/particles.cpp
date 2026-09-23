@@ -46,7 +46,7 @@ void Particles::build(Engine& engine, Scene& scene, Material* rain, Material* st
         rainMi_->setParameter("boxSize", float3{cfg.particles.rainBox[0], cfg.particles.rainBox[1], cfg.particles.rainBox[2]});
         rainMi_->setParameter("wind", float3{0.8f, 0.0f, 1.4f});
         rainMi_->setParameter("fallSpeed", 9.0f);
-        rainMi_->setParameter("nits", 3.2f);
+        rainMi_->setParameter("nits", 2.2f);
         rainMi_->setParameter("tint", float3{0.55f, 0.65f, 0.9f});
         rain_ = makeProcedural(engine, scene, rainVb_, rainMi_, static_cast<uint32_t>(cfg.particles.rain) * 6, 7);
         count_ += cfg.particles.rain;

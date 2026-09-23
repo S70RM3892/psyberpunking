@@ -1,0 +1,82 @@
+# 16KBページのAndroidエミュレータ（Android 15、x86_64）での試験（仕様のテスト計画）：
+#   1. 起動 → 計測完了までクラッシュしない（自動実行：Low、1周10秒）
+#   2. Linux版と APK の描画一致：固定カメラ5点の画像差分 PSNR 40dB 以上
+# どちらもソフトウェアGPUなので速度は測らない。配布物は arm64-v8a のみで、ここだけ x86_64 版を作る。
+name: Android emulator (16 KB pages)
+
+on:
+  workflow_dispatch:
+  workflow_call:
+  schedule:
+    - cron: "0 18 * * 1"   # 毎週火曜 03:00 JST
+
+permissions:
+  contents: read
+
+jobs:
+  linux-shots:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libc++-dev libc++abi-dev libsdl2-dev ninja-build mesa-vulkan-drivers libvulkan1
+      - uses: actions/cache@v4
+        with:
+          path: third_party/filament/.cache
+          key: filament-${{ hashFiles('tools/fetch_filament.sh') }}
+      - run: tools/fetch_filament.sh linux
+      - run: |
+          CC=clang CXX=clang++ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBENCH_BUILD_TESTS=OFF
+          cmake --build build
+          VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json build/benchdeck --headless --shots shots
+      - uses: actions/upload-artifact@v4
+        with:
+          name: emulator-ref-linux-shots
+          path: shots
+
+  emulator:
+    needs: linux-shots
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.14206865" "cmake;3.31.6"
+      - uses: actions/cache@v4
+        with:
+          path: third_party/filament/.cache
+          key: filament-${{ hashFiles('tools/fetch_filament.sh') }}
+      - run: tools/fetch_filament.sh
+      - name: Build x86_64 test APK
+        working-directory: android
+        run: ./gradlew --no-daemon assembleDebug -Pbenchdeck.abis=x86_64
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: emulator-ref-linux-shots
+          path: linux-shots
+
+      - name: Run on a 16 KB page-size emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis_ps16k
+          arch: x86_64
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          disable-animations: true
+          script: tools/emulator_test.sh android/app/build/outputs/apk/debug/app-debug.apk linux-shots
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: emulator-output
+          path: emulator-out

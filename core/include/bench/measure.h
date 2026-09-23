@@ -87,6 +87,9 @@ struct RunResult {
     int lightsVisibleMax = 0;
     double trianglesAvg = 0;
     double drawCallsAvg = 0;
+    // 素材の有無（負荷が変わるので、比べる結果どうしで一致している必要がある）
+    int texturesFromAssets = 0;
+    bool iblFromAssets = false;
 
     std::vector<FrameRecord> frames;  // 全フレーム（無効周回も含む）
 };

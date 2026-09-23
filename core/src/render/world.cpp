@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 
 #include <filament/Frustum.h>
 #include <filament/RenderableManager.h>
@@ -96,6 +97,12 @@ bool World::build(Engine& engine, Scene& scene, View& view, Camera& camera, cons
     moonDir_ = normalize(float3{-0.32f, 0.42f, 0.85f});
     ibl_ = makeIbl(engine, *in.platform, moonDir_);
     scene.setIndirectLight(ibl_.light);
+    {
+        char msg[160];
+        std::snprintf(msg, sizeof(msg), "textures: %d/%d from CC0 assets (rest generated), IBL: %s", textures_.fromAssets,
+                      static_cast<int>(Tex::Count), ibl_.fromAssets ? "cmgen KTX" : "procedural");
+        in.platform->log(msg);
+    }
     report(0.25f);
 
     // ---- マテリアルインスタンス ----
@@ -375,7 +382,16 @@ void World::update(double t, uint32_t frame) {
     const float aspect = static_cast<float>(cfg_->width) / static_cast<float>(cfg_->height);
     camera_->setProjection(key.fovDeg, aspect, 0.1, 2500.0, Camera::Fov::VERTICAL);
     camera_->lookAt(eye, eye + key.forward, float3{0, 1, 0});
-    camera_->setFocusDistance(28.0f);
+    // ピント：大通りは25m先の看板、高架は45m先の街並み、路地は9m先。区間の境目は滑らかに移す
+    {
+        auto smooth = [](float e0, float e1, float x) {
+            float k = std::clamp((x - e0) / (e1 - e0), 0.0f, 1.0f);
+            return k * k * (3.0f - 2.0f * k);
+        };
+        const float tn = static_cast<float>(t * 60.0 / std::max(1.0, cfg_->cameraPath.duration));
+        float focus = 25.0f + 20.0f * smooth(19.f, 24.f, tn) - 36.0f * smooth(39.f, 47.f, tn);
+        camera_->setFocusDistance(focus);
+    }
     tcm.setTransform(tcm.getInstance(sky_), mat4f::translation(eye));
 
     // ---- ビルのLOD（XZ距離、仕様の [60, 180, 500] m） ----
@@ -557,6 +573,8 @@ void World::updateStats(const float3& eye) {
     stats_.triangles = tris + (fog_.enabled() ? 0 : 0);
     stats_.drawCalls = draws + static_cast<size_t>(fog_.sliceCount()) + (particles_.count() > 0 ? 2 : 0);
     stats_.renderables = renderables;
+    stats_.texturesFromAssets = textures_.fromAssets;
+    stats_.iblFromAssets = ibl_.fromAssets;
 }
 
 void World::destroy(Engine& engine) {

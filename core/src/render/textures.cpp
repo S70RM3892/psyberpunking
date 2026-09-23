@@ -353,7 +353,15 @@ Ibl makeIbl(Engine& engine, Platform& platform, float3 moonDir) {
         IndirectLight::Builder b;
         b.reflections(ibl.reflections);
         if (hasSh) b.irradiance(3, sh);
-        ibl.light = b.intensity(60.0f).build(engine);
+        // HDRI ごとに明るさが違うので、SH の0次（平均輝度）で正規化して、手続き生成の環境光と同じ
+        // 「夜の街の環境光」の明るさ（平均 kNightAmbient）に揃える
+        constexpr float kNightAmbient = 3.0f;
+        float intensity = 45.0f;
+        if (hasSh) {
+            float lum = dot(sh[0], float3{0.2126f, 0.7152f, 0.0722f});
+            if (lum > 1e-6f) intensity = kNightAmbient / lum;
+        }
+        ibl.light = b.intensity(intensity).build(engine);
         ibl.fromAssets = true;
         return ibl;
     }

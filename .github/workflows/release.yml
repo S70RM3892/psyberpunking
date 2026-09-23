@@ -1,0 +1,105 @@
+# タグ v* の push で：Linux版単体テスト → 画像差分チェック（16KBエミュレータ）→ APK/Linux版ビルド → 署名 → Release作成
+#
+# 必要な Secrets（リポジトリの Settings → Secrets and variables → Actions）:
+#   BENCHDECK_KEYSTORE_B64     リリース用 keystore を base64 にしたもの（keystore はリポジトリに入れない）
+#   BENCHDECK_KEYSTORE_PASS    keystore のパスワード
+#   BENCHDECK_KEY_ALIAS        鍵のエイリアス
+#   BENCHDECK_KEY_PASS         鍵のパスワード（keystore と同じなら同じ値）
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  emulator:
+    uses: ./.github/workflows/emulator.yml
+
+  build:
+    needs: [test, emulator]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # リリースノートで前のタグのシーン定義と比べる
+      - name: Version
+        id: v
+        run: |
+          echo "name=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          echo "code=${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libc++-dev libc++abi-dev libsdl2-dev ninja-build python3-pil
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.14206865" "cmake;3.31.6"
+      - uses: actions/cache@v4
+        with:
+          path: third_party/filament/.cache
+          key: filament-${{ hashFiles('tools/fetch_filament.sh') }}
+      - run: tools/fetch_filament.sh
+
+      # CC0 素材（取得できなければ実行時生成に切り替わるので、失敗してもリリースは止めない）
+      - name: CC0 assets
+        continue-on-error: true
+        run: python3 tools/assets.py all
+
+      - name: Linux build (tar.gz)
+        run: |
+          CC=clang CXX=clang++ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBENCH_BUILD_TESTS=OFF
+          cmake --build build
+          DEST=benchdeck-${{ steps.v.outputs.name }}-linux-x86_64
+          cmake --install build --prefix "dist/$DEST"
+          tar -C dist -czf "dist/$DEST.tar.gz" "$DEST"
+
+      - name: APK (unsigned release)
+        working-directory: android
+        run: ./gradlew --no-daemon assembleRelease -Pbenchdeck.versionName=${{ steps.v.outputs.name }} -Pbenchdeck.versionCode=${{ steps.v.outputs.code }}
+
+      - name: Sign APK (apksigner, APK Signature Scheme v2+)
+        env:
+          KEYSTORE_B64: ${{ secrets.BENCHDECK_KEYSTORE_B64 }}
+          KEYSTORE_PASS: ${{ secrets.BENCHDECK_KEYSTORE_PASS }}
+          KEY_ALIAS: ${{ secrets.BENCHDECK_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.BENCHDECK_KEY_PASS }}
+        run: |
+          test -n "$KEYSTORE_B64" || { echo "BENCHDECK_KEYSTORE_B64 is not set"; exit 1; }
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+          BT=$ANDROID_HOME/build-tools/36.0.0
+          IN=$(ls android/app/build/outputs/apk/release/*-unsigned.apk)
+          OUT=dist/benchdeck-${{ steps.v.outputs.name }}-arm64.apk
+          $BT/zipalign -P 16 -f 4 "$IN" "$RUNNER_TEMP/aligned.apk"
+          $BT/apksigner sign --ks "$RUNNER_TEMP/release.keystore" --ks-pass env:KEYSTORE_PASS \
+            --ks-key-alias "$KEY_ALIAS" --key-pass env:KEY_PASS \
+            --v1-signing-enabled false --v2-signing-enabled true --v3-signing-enabled true \
+            --out "$OUT" "$RUNNER_TEMP/aligned.apk"
+          $BT/apksigner verify --verbose "$OUT" | head -5
+          rm -f "$RUNNER_TEMP/release.keystore"
+
+      - name: Checksums and notes
+        run: |
+          cd dist
+          sha256sum benchdeck-*.apk benchdeck-*.tar.gz > SHA256SUMS.txt
+          for f in benchdeck-*.apk benchdeck-*.tar.gz; do sha256sum "$f" | cut -d' ' -f1 > "$f.sha256"; done
+          cd ..
+          python3 tools/release_notes.py "${GITHUB_REF_NAME}" > dist/NOTES.md
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          body_path: dist/NOTES.md
+          files: |
+            dist/benchdeck-*.apk
+            dist/benchdeck-*.tar.gz
+            dist/*.sha256
+            dist/SHA256SUMS.txt
