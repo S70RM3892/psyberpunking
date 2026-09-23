@@ -76,6 +76,10 @@ jobs:
           api-level: 35
           target: google_apis_ps16k
           arch: x86_64
+          # 既定（約2GB）だと Google のシステムアプリだけで埋まり、lowmemorykiller にアプリを落とされる。
+          # 配布の下限（RAM 6GB）に近づけて 4GB にする
+          ram-size: 4096M
+          disk-size: 6000M
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           disable-animations: true
           script: tools/emulator_test.sh android/app/build/outputs/apk/debug/app-debug.apk linux-shots

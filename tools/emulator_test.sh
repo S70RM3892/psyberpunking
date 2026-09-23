@@ -16,14 +16,24 @@ mkdir -p "$OUT"
 adb wait-for-device
 echo "page size: $(adb shell getconf PAGE_SIZE)"
 adb shell getprop ro.build.version.release
+adb shell grep MemTotal /proc/meminfo
 adb install -r -g "$APK"
 
 wait_for_log() {  # $1 = 正規表現, $2 = 秒
-  local pattern="$1" deadline=$(( $(date +%s) + $2 ))
+  local pattern="$1" deadline=$(( $(date +%s) + $2 )) seen=0
   while [ "$(date +%s)" -lt "$deadline" ]; do
     if adb logcat -d -s BenchDeck:I AndroidRuntime:E | grep -E "$pattern"; then return 0; fi
     if adb logcat -d -s AndroidRuntime:E | grep -q "FATAL EXCEPTION"; then
       adb logcat -d > "$OUT/logcat.txt"; echo "app crashed"; return 1
+    fi
+    # プロセスが消えたら（ネイティブのクラッシュ・メモリ不足での強制終了など）待たずに失敗にする
+    if adb shell pidof "$PKG" > /dev/null 2>&1; then
+      seen=1
+    elif [ "$seen" = 1 ]; then
+      adb logcat -d > "$OUT/logcat.txt"
+      echo "app process died:"
+      grep -E "lowmemorykiller: Kill '$PKG'|Fatal signal|$PKG.*has died" "$OUT/logcat.txt" | head -5 || true
+      return 1
     fi
     sleep 5
   done
