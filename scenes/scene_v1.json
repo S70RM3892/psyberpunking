@@ -1,0 +1,78 @@
+{
+  "version": "1.0.0",
+  "seed": 2077,
+  "target": { "device": "steam_deck", "avg_fps": 40 },
+  "baseline": null,
+  "render": { "width": 1280, "height": 800, "backend": "vulkan" },
+  "city": {
+    "blocks": [10, 20],
+    "block_size_m": [48, 36],
+    "street_width_m": 18,
+    "alley_width_m": 6,
+    "buildings": 200,
+    "lod_distances_m": [60, 180, 500],
+    "height_range_m": [18, 140],
+    "overpass": { "height_m": 11, "width_m": 14 }
+  },
+  "lights": {
+    "neon_point": 200,
+    "neon_spot": 56,
+    "street": 40,
+    "neon_intensity_lm": 1600,
+    "street_intensity_lm": 5200,
+    "falloff_m": 14,
+    "moon_lux": 0.9
+  },
+  "crowd": { "model": "character.glb", "count": 60, "variants": 4, "walk_speed_mps": [1.1, 1.6] },
+  "vehicles": { "models": ["car_a.glb", "car_b.glb", "car_c.glb"], "count": 30, "speed_mps": [7, 13] },
+  "particles": { "rain": 16000, "steam": 4000, "rain_box_m": [40, 24, 40] },
+  "fog": { "density": 0.045, "height_falloff": 0.08, "range_m": 70, "anisotropy_hint": 0.35 },
+  "camera_path": {
+    "duration_s": 60,
+    "rate_hz": 30,
+    "sections": [
+      { "name": "boulevard", "t": [0, 20] },
+      { "name": "overpass",  "t": [20, 40] },
+      { "name": "alley",     "t": [40, 60] }
+    ],
+    "keys": "camera_path_v1.bin"
+  },
+  "presets": {
+    "low": {
+      "render_scale": 0.50, "upscaler": "fsr",
+      "shadow": { "cascades": 2, "map": 512, "local_lights": 0, "local_map": 512, "contact": false },
+      "ssao": { "enabled": false, "half_res": true, "quality": "low" },
+      "ssr": { "enabled": false, "half_res": true, "steps": 0 },
+      "fog": { "enabled": false, "grid": [0, 0, 0] },
+      "crowd_scale": 0.5, "texture_max": 512,
+      "taa": true, "bloom": true, "dof": false, "motion_blur": false
+    },
+    "deck": {
+      "render_scale": 0.67, "upscaler": "fsr",
+      "shadow": { "cascades": 3, "map": 1024, "local_lights": 8, "local_map": 512, "contact": true },
+      "ssao": { "enabled": true, "half_res": true, "quality": "low" },
+      "ssr": { "enabled": true, "half_res": true, "steps": 24 },
+      "fog": { "enabled": true, "grid": [120, 75, 64] },
+      "crowd_scale": 1.0, "texture_max": 1024,
+      "taa": true, "bloom": true, "dof": true, "motion_blur": false
+    },
+    "medium": {
+      "render_scale": 0.77, "upscaler": "fsr",
+      "shadow": { "cascades": 3, "map": 2048, "local_lights": 16, "local_map": 1024, "contact": true },
+      "ssao": { "enabled": true, "half_res": true, "quality": "medium" },
+      "ssr": { "enabled": true, "half_res": true, "steps": 32 },
+      "fog": { "enabled": true, "grid": [160, 90, 64] },
+      "crowd_scale": 2.0, "texture_max": 2048,
+      "taa": true, "bloom": true, "dof": true, "motion_blur": false
+    },
+    "high": {
+      "render_scale": 1.00, "upscaler": "fsr",
+      "shadow": { "cascades": 4, "map": 2048, "local_lights": 32, "local_map": 1024, "contact": true },
+      "ssao": { "enabled": true, "half_res": false, "quality": "high" },
+      "ssr": { "enabled": true, "half_res": false, "steps": 48 },
+      "fog": { "enabled": true, "grid": [160, 90, 128] },
+      "crowd_scale": 3.3334, "texture_max": 2048,
+      "taa": true, "bloom": true, "dof": true, "motion_blur": false
+    }
+  }
+}

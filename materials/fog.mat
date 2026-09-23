@@ -1,0 +1,95 @@
+// ボリューメトリックフォグ（自作）。カメラの視錐台を gz 枚のスライスに切り、各スライスを gx × gy の格子で張る。
+// 光の散乱は格子点（＝フロクセル）ごとに頂点シェーダで計算し、画素は補間するだけ。
+// POSITION = (ndc.x, ndc.y, スライス番号)。スライスの奥行きは毎フレームの jitter でずらし、TAAで縞を消す。
+material {
+    name : fog,
+    shadingModel : unlit,
+    parameters : [
+        { type : float4[16], name : lightPos },
+        { type : float4[16], name : lightColor },
+        { type : float, name : lightCount },
+        { type : float3, name : moonDir },
+        { type : float3, name : moonColor },
+        { type : float3, name : ambient },
+        { type : float, name : density },
+        { type : float, name : heightFalloff },
+        { type : float, name : range },
+        { type : float, name : sliceCount },
+        { type : float, name : jitter },
+        { type : float, name : anisotropy },
+        { type : float, name : time }
+    ],
+    variables : [ fogv ],
+    blending : transparent,
+    depthWrite : false,
+    culling : none,
+    variantFilter : [ skinning, shadowReceiver, vsm ]
+}
+
+vertex {
+    #include "common.glsl"
+
+    float sliceDepth(float k, float n, float range) {
+        // 近いほど細かい指数分布（0.4 m 〜 range）
+        float near = 0.4;
+        return near * pow(range / near, clamp(k / n, 0.0, 1.0));
+    }
+
+    float phaseHG(float cosTheta, float g) {
+        float g2 = g * g;
+        return (1.0 - g2) / (4.0 * 3.14159265 * pow(max(1.0 + g2 - 2.0 * g * cosTheta, 1e-4), 1.5));
+    }
+
+    void materialVertex(inout MaterialVertexInputs material) {
+        vec3 m = getPosition().xyz;
+        float n = materialParams.sliceCount;
+        float k = m.z + materialParams.jitter;
+        float d0 = sliceDepth(k, n, materialParams.range);
+        float d1 = sliceDepth(k + 1.0, n, materialParams.range);
+        mat4 proj = getClipFromViewMatrix();
+        vec3 view = vec3(m.x * d0 / proj[0][0], m.y * d0 / proj[1][1], -d0);
+        vec4 world = getWorldFromViewMatrix() * vec4(view, 1.0);
+        material.worldPosition = world;
+
+        vec3 pUser = (getUserWorldFromWorldMatrix() * world).xyz;
+        vec3 camUser = (getUserWorldFromWorldMatrix() * vec4(getWorldCameraPosition(), 1.0)).xyz;
+        vec3 v = normalize(camUser - pUser);
+
+        // 密度：高さで薄くなる霧 ＋ 風で流れるノイズ
+        float t = materialParams.time;
+        float h = max(pUser.y, 0.0);
+        float noise = bdNoise3(pUser * 0.09 + vec3(t * 0.35, t * 0.05, t * 0.2)) * 0.7
+                    + bdNoise3(pUser * 0.31 + vec3(-t * 0.6, 0.0, t * 0.4)) * 0.3;
+        float dens = materialParams.density * exp(-materialParams.heightFalloff * h) * (0.35 + 1.3 * noise);
+
+        // 散乱光：月（ほぼ等方）＋ 近い光源16灯（逆二乗＋窓関数、HG位相）
+        float g = materialParams.anisotropy;
+        vec3 inscatter = materialParams.ambient + materialParams.moonColor * phaseHG(dot(-v, materialParams.moonDir), g * 0.3) * 4.0;
+        int count = int(materialParams.lightCount + 0.5);
+        for (int i = 0; i < 16; i++) {
+            if (i >= count) break;
+            vec4 lp = materialParams.lightPos[i];
+            vec4 lc = materialParams.lightColor[i];
+            vec3 L = lp.xyz - pUser;
+            float d2 = dot(L, L);
+            float win = clamp(1.0 - (d2 * d2) / (lp.w * lp.w * lp.w * lp.w), 0.0, 1.0);
+            float atten = win * win / (d2 + 1.0);
+            // lc.w = スポットなら下向き円錐の鋭さ（0 = 点光源）
+            vec3 Ln = L * inversesqrt(max(d2, 1e-4));
+            float cone = lc.w > 0.0 ? smoothstep(0.3, 0.8, dot(-Ln, vec3(0.0, -1.0, 0.0)) * lc.w) : 1.0;
+            inscatter += lc.rgb * atten * cone * phaseHG(dot(-v, Ln), g);
+        }
+        float thickness = d1 - d0;
+        float alpha = 1.0 - exp(-dens * thickness);
+        // 遠端は Filament の距離フォグに渡すので、範囲の最後で薄くする
+        alpha *= 1.0 - smoothstep(0.8, 1.0, k / n);
+        material.fogv = vec4(inscatter * alpha * getExposure(), alpha);
+    }
+}
+
+fragment {
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        material.baseColor = variable_fogv;
+    }
+}

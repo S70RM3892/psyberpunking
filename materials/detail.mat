@@ -1,0 +1,73 @@
+// 付帯物（庇・フィン・屋上設備・橋脚・欄干・街灯・看板の枠）と発光ストリップ。
+// custom0: x = 種別（0 金属, 1 コンクリート, 2 塗装, 3 発光ストリップ, 4 航空障害灯）, y = 色相, z = 発光強度倍率
+material {
+    name : detail,
+    shadingModel : lit,
+    requires : [ uv0, custom0, tangents ],
+    parameters : [
+        { type : sampler2d, name : metalAlbedo },
+        { type : sampler2d, name : concreteAlbedo },
+        { type : float, name : stripNits },
+        { type : float, name : time }
+    ],
+    variables : [ attrs, wpos ],
+    specularAntiAliasing : true,
+    variantFilter : [ skinning ]
+}
+
+vertex {
+    void materialVertex(inout MaterialVertexInputs material) {
+        material.attrs = getCustom0();
+        material.wpos = getUserWorldFromWorldMatrix() * material.worldPosition;
+    }
+}
+
+fragment {
+    #include "common.glsl"
+
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        vec4 c = variable_attrs;
+        float kind = c.x;
+        vec3 wp = variable_wpos.xyz;
+        // 箱の面ごとにUVが実寸なので、ワールド座標で三面投影すると継ぎ目が出ない
+        vec3 an = abs(shading_normal);
+        vec2 tuv = an.y > 0.7 ? wp.xz : (an.x > an.z ? wp.zy : wp.xy);
+        tuv *= 0.35;
+
+        material.emissive = vec4(0.0);
+        if (kind < 0.5) {
+            vec3 t = texture(materialParams_metalAlbedo, tuv).rgb;
+            float rust = smoothstep(0.55, 0.85, bdFbm2(tuv * 3.0));
+            material.baseColor = vec4(mix(vec3(0.32, 0.33, 0.35), vec3(0.22, 0.12, 0.07), rust) * t * 2.0, 1.0);
+            material.metallic = mix(0.9, 0.2, rust);
+            material.roughness = mix(0.38, 0.8, rust);
+        } else if (kind < 1.5) {
+            vec3 t = texture(materialParams_concreteAlbedo, tuv).rgb;
+            float stain = 0.6 + 0.4 * bdNoise2(tuv * 1.7);
+            material.baseColor = vec4(vec3(0.34, 0.33, 0.32) * t * 2.0 * stain, 1.0);
+            material.metallic = 0.0;
+            material.roughness = 0.88;
+        } else if (kind < 2.5) {
+            vec3 paint = bdHsv(c.y, 0.5, 0.16);
+            float chip = smoothstep(0.7, 0.8, bdNoise2(tuv * 6.0));
+            material.baseColor = vec4(mix(paint, vec3(0.2), chip), 1.0);
+            material.metallic = chip * 0.8;
+            material.roughness = mix(0.45, 0.7, chip);
+        } else if (kind < 3.5) {
+            // 発光ストリップ：ゆっくり明滅する光の流れ
+            float flow = 0.75 + 0.25 * sin(dot(wp, vec3(0.35, 0.2, 0.35)) - materialParams.time * 2.0);
+            material.baseColor = vec4(vec3(0.02), 1.0);
+            material.metallic = 0.0;
+            material.roughness = 0.3;
+            material.emissive = vec4(bdNeon(c.y) * materialParams.stripNits * c.z * flow, 1.0);
+        } else {
+            // 航空障害灯（1秒周期で点滅）
+            float blink = step(0.5, fract(materialParams.time * 0.5 + bdHash21(floor(wp.xz))));
+            material.baseColor = vec4(vec3(0.05, 0.0, 0.0), 1.0);
+            material.metallic = 0.0;
+            material.roughness = 0.4;
+            material.emissive = vec4(vec3(1.0, 0.05, 0.02) * materialParams.stripNits * 3.0 * blink, 1.0);
+        }
+    }
+}

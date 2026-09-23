@@ -1,0 +1,174 @@
+// ビルの外壁と窓。
+// custom0: x = style + seed*0.999, y = part（0 壁, 1 見込み, 2 ガラス, 3 店舗, 4 窓をシェーダで描く壁）,
+//          z = 柱間幅[m], w = 階高[m]。uv0 は壁座標（メートル、v = 地上からの高さ）。
+material {
+    name : facade,
+    shadingModel : lit,
+    requires : [ uv0, custom0, tangents ],
+    parameters : [
+        { type : sampler2d, name : wallAlbedo },
+        { type : sampler2d, name : wallNormal },
+        { type : sampler2d, name : wallOrm },
+        { type : float, name : windowNits },
+        { type : float, name : litRatio },
+        { type : float, name : time }
+    ],
+    variables : [ building, attrs ],
+    specularAntiAliasing : true,
+    variantFilter : [ skinning ]
+}
+
+vertex {
+    void materialVertex(inout MaterialVertexInputs material) {
+        // 同じ型のビルでも窓の点き方を変えるため、インスタンスの位置からハッシュを作る
+        vec3 origin = (getUserWorldFromWorldMatrix() * vec4(getWorldFromModelMatrix()[3].xyz, 1.0)).xyz;
+        material.building = vec4(fract(sin(dot(floor(origin.xz), vec2(12.9898, 78.233))) * 43758.5453), 0.0, 0.0, 0.0);
+        material.attrs = getCustom0();
+    }
+}
+
+fragment {
+    #include "common.glsl"
+
+    // スタイル別の窓の開口（CPU側 procgen_city.cpp の styleParams と同じ比率）
+    void windowRect(float style, out vec2 lo, out vec2 hi, float fh) {
+        if (style < 0.5) {
+            lo = vec2(0.07, 0.35 / fh); hi = vec2(0.93, (0.35 + 0.78 * fh) / fh);
+        } else if (style < 1.5) {
+            lo = vec2(0.22, 0.85 / fh); hi = vec2(0.78, (0.85 + 0.52 * fh) / fh);
+        } else {
+            lo = vec2(0.19, 1.2 / fh); hi = vec2(0.81, (1.2 + 0.5 * fh) / fh);
+        }
+    }
+
+    // 窓の中の部屋（インテリアマッピングの簡易版）。cellUv は開口内 0..1、viewT は接空間の視線
+    vec3 roomColor(vec2 cellUv, vec3 viewT, float rnd, float lit, float style) {
+        // 奥行き 0.9 の箱に視線を当てて、奥の壁・床・天井を見分ける
+        vec3 dir = normalize(vec3(-viewT.xy, max(abs(viewT.z), 0.05)));
+        vec2 p = cellUv * 2.0 - 1.0;
+        vec2 tWall = (sign(dir.xy) - p) / max(abs(dir.xy), vec2(1e-3)) * sign(dir.xy);
+        float tBack = 0.9 / dir.z;
+        float t = min(min(abs(tWall.x), abs(tWall.y)), tBack);
+        vec3 hit = vec3(p, 0.0) + dir * t;
+        float shade;
+        if (t == tBack) {
+            shade = 1.0;                                   // 奥の壁
+        } else if (abs(tWall.y) < abs(tWall.x)) {
+            shade = hit.y > 0.0 ? 1.25 : 0.45;             // 天井は明るく、床は暗い
+        } else {
+            shade = 0.75;                                  // 横の壁
+        }
+        // 照明の色温度（暖色・蛍光灯・たまにネオン）
+        vec3 warm = vec3(1.0, 0.72, 0.42);
+        vec3 cool = vec3(0.78, 0.9, 1.0);
+        vec3 neon = bdNeon(fract(rnd * 7.13));
+        vec3 c = rnd < 0.55 ? warm : (rnd < 0.9 ? cool : neon);
+        // ブラインド（水平の縞）
+        float blinds = step(0.72, fract(rnd * 13.7)) * step(0.5, fract(cellUv.y * 18.0));
+        return c * shade * lit * (1.0 - 0.6 * blinds);
+    }
+
+    void material(inout MaterialInputs material) {
+        vec4 c = variable_attrs;
+        float style = floor(c.x);
+        float seed = fract(c.x);
+        float part = c.y;
+        float bay = max(c.z, 0.5);
+        float fh = max(c.w, 2.5);
+        vec2 uv = getUV0();
+
+        vec2 cell = floor(uv / vec2(bay, fh));
+        vec2 cellUv = fract(uv / vec2(bay, fh));
+        float bld = variable_building.x;
+        float rnd = bdHash31(vec3(cell, seed * 97.0 + bld * 311.0));
+        float floorRnd = bdHash21(vec2(cell.y, seed * 53.0 + bld * 17.0));
+
+        // 窓をシェーダで描く壁は、開口の中ならガラス扱い
+        if (part > 3.5) {
+            vec2 lo, hi;
+            if (cell.y < 0.5) {
+                lo = vec2(0.06, 0.1 / fh); hi = vec2(0.94, 0.82);
+            } else {
+                windowRect(style, lo, hi, fh);
+            }
+            vec2 inside = step(lo, cellUv) * step(cellUv, hi);
+            part = inside.x * inside.y > 0.5 ? (cell.y < 0.5 ? 3.0 : 2.0) : 0.0;
+        }
+
+        // ---- 法線（壁はテクスチャ、ガラスは平ら） ----
+        vec2 tuv = uv * vec2(0.25, 0.25) + vec2(seed * 7.0, 0.0);
+        vec3 n = texture(materialParams_wallNormal, tuv).xyz * 2.0 - 1.0;
+        material.normal = part > 1.5 ? vec3(0.0, 0.0, 1.0) : normalize(mix(vec3(0.0, 0.0, 1.0), n, 0.6));
+        prepareMaterial(material);
+
+        // ---- 壁 ----
+        vec3 texAlbedo = texture(materialParams_wallAlbedo, tuv).rgb;
+        vec3 orm = texture(materialParams_wallOrm, tuv).rgb;
+        vec3 tint;
+        float metallic, rough;
+        if (style < 0.5) {         // ガラスタワーの金属パネル
+            tint = vec3(0.16, 0.18, 0.22);
+            metallic = 0.75;
+            rough = 0.32;
+        } else if (style < 1.5) {  // 集合住宅のコンクリート
+            tint = mix(vec3(0.42, 0.40, 0.37), vec3(0.30, 0.33, 0.36), floorRnd * 0.5 + seed * 0.5);
+            metallic = 0.0;
+            rough = 0.85;
+        } else {                    // 工業系（煉瓦色）
+            tint = vec3(0.30, 0.16, 0.12);
+            metallic = 0.0;
+            rough = 0.8;
+        }
+        // 雨だれの汚れと、足元の濡れ
+        float streak = bdNoise2(vec2(uv.x * 3.1, uv.y * 0.12 + seed * 40.0));
+        float grime = mix(1.0, 0.55, smoothstep(0.55, 0.95, streak) * 0.8);
+        float wetBase = 1.0 - smoothstep(0.0, 2.2, uv.y);
+        vec3 wall = tint * texAlbedo * 2.0 * grime;
+        if (part > 0.5 && part < 1.5) wall *= 0.7;  // 見込みは少し暗く
+
+        material.baseColor = vec4(wall * (1.0 - 0.35 * wetBase), 1.0);
+        material.metallic = metallic;
+        material.roughness = clamp(rough * orm.g * 1.6 * (1.0 - 0.5 * wetBase), 0.05, 1.0);
+        material.ambientOcclusion = orm.r;
+        material.emissive = vec4(0.0);
+
+        // ---- ガラス・店舗 ----
+        if (part > 1.5) {
+            // 開口内の座標（LOD0は開口ぴったり、LOD1/2は窓矩形の中）
+            vec2 lo, hi;
+            if (part > 2.5) {
+                lo = vec2(0.06, 0.1 / fh); hi = vec2(0.94, 0.82);
+            } else {
+                windowRect(style, lo, hi, fh);
+            }
+            vec2 wuv = clamp((cellUv - lo) / max(hi - lo, vec2(1e-3)), 0.0, 1.0);
+            vec3 viewT = transpose(getWorldTangentFrame()) * shading_view;
+
+            float ratio = materialParams.litRatio * (style < 0.5 ? 0.8 : (style < 1.5 ? 1.1 : 0.7));
+            // 階ごとに消灯しているフロア、深夜にちらつく窓
+            float floorOff = step(0.82, floorRnd);
+            float lit = step(rnd, ratio) * (1.0 - floorOff);
+            float flick = 1.0 - 0.35 * step(0.985, rnd) * step(0.5, fract(materialParams.time * (3.0 + rnd * 5.0)));
+            vec3 room = roomColor(wuv, viewT, fract(rnd * 31.7), lit * flick, style);
+
+            float nits = materialParams.windowNits * (0.35 + 0.9 * fract(rnd * 17.3));
+            if (part > 2.5) {
+                // 店舗：天井灯の帯、棚の段、奥の暗がり。色は店ごとに変える
+                vec3 shop = mix(vec3(1.0, 0.82, 0.6), bdNeon(fract(rnd * 3.7 + seed)), 0.55);
+                float shelves = 0.55 + 0.45 * step(0.35, fract(wuv.y * 4.0 + 0.1));
+                float items = 0.75 + 0.25 * bdHash21(floor(wuv * vec2(9.0, 4.0)) + rnd * 13.0);
+                float ceiling = smoothstep(0.86, 0.95, wuv.y) * 2.5;
+                float depthFade = 0.55 + 0.45 * smoothstep(0.0, 0.5, abs(wuv.x - 0.5));
+                float counter = mix(0.25, 1.0, smoothstep(0.18, 0.3, wuv.y));
+                float closed = step(0.85, fract(rnd * 7.9));  // シャッターの閉まった店
+                room = shop * (shelves * items * counter * depthFade + ceiling) * (1.0 - 0.9 * closed);
+                nits = materialParams.windowNits * 1.1;
+            }
+            material.baseColor = vec4(vec3(0.015, 0.018, 0.022), 1.0);
+            material.metallic = 0.0;
+            material.roughness = 0.06;
+            material.ambientOcclusion = 1.0;
+            material.emissive = vec4(room * nits, 1.0);
+        }
+    }
+}

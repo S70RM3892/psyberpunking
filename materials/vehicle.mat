@@ -1,0 +1,80 @@
+// 車。車体はクリアコート塗装、窓はUVから描く。
+// custom0: x = 部位（0 車体, 1 ガラス, 2 タイヤ, 3 ヘッドライト, 4 テールライト, 5 下廻りネオン, 6 ホイール）,
+//          z/w = 客室の前後範囲（uv.x）
+material {
+    name : vehicle,
+    shadingModel : lit,
+    requires : [ uv0, custom0, tangents ],
+    parameters : [
+        { type : float3, name : paint },
+        { type : float3, name : underglow },
+        { type : float, name : lightNits },
+        { type : float, name : time }
+    ],
+    variables : [ attrs ],
+    specularAntiAliasing : true,
+    clearCoatIorChange : false,
+    variantFilter : [ skinning ]
+}
+
+vertex {
+    void materialVertex(inout MaterialVertexInputs material) {
+        material.attrs = getCustom0();
+    }
+}
+
+fragment {
+    #include "common.glsl"
+
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        vec4 c = variable_attrs;
+        float part = c.x + 0.5;
+        vec2 uv = getUV0();
+        material.emissive = vec4(0.0);
+        material.clearCoat = 0.0;
+        material.clearCoatRoughness = 0.1;
+
+        if (part < 1.0) {
+            // 窓：客室の範囲で、周方向の上側（側面の上半分〜屋根の手前）
+            float around = uv.y;
+            float side = step(0.08, around) * step(around, 0.2) + step(0.30, around) * step(around, 0.42);
+            float cabin = step(c.z + 0.02, uv.x) * step(uv.x, c.w - 0.02);
+            // 前後のガラス（ウインドシールド）は客室の端で屋根側
+            float shield = (step(c.z - 0.06, uv.x) * step(uv.x, c.z + 0.02) + step(c.w - 0.02, uv.x) * step(uv.x, c.w + 0.05))
+                         * step(0.12, around) * step(around, 0.38);
+            float glass = clamp(side * cabin + shield, 0.0, 1.0);
+            // ドアの隙間（細い溝）
+            float seam = step(abs(fract(uv.x * 4.0) - 0.5), 0.004) * step(around, 0.2) * cabin;
+            vec3 paint = materialParams.paint * (1.0 - 0.8 * seam);
+            material.baseColor = vec4(mix(paint, vec3(0.01, 0.012, 0.015), glass), 1.0);
+            material.metallic = mix(0.8, 0.0, glass);
+            material.roughness = mix(0.32, 0.04, glass);
+            material.clearCoat = 1.0 - glass;
+            material.clearCoatRoughness = 0.06;
+        } else if (part < 3.0) {
+            material.baseColor = vec4(vec3(0.025), 1.0);
+            material.metallic = 0.0;
+            material.roughness = 0.85;
+        } else if (part < 4.0) {
+            material.baseColor = vec4(vec3(0.9), 1.0);
+            material.metallic = 0.0;
+            material.roughness = 0.2;
+            material.emissive = vec4(vec3(0.85, 0.92, 1.0) * materialParams.lightNits, 1.0);
+        } else if (part < 5.0) {
+            material.baseColor = vec4(0.3, 0.0, 0.0, 1.0);
+            material.metallic = 0.0;
+            material.roughness = 0.2;
+            material.emissive = vec4(vec3(1.0, 0.02, 0.03) * materialParams.lightNits * 0.45, 1.0);
+        } else if (part < 6.0) {
+            material.baseColor = vec4(vec3(0.02), 1.0);
+            material.metallic = 0.0;
+            material.roughness = 0.5;
+            material.emissive = vec4(materialParams.underglow * materialParams.lightNits * 0.5, 1.0);
+        } else {
+            material.baseColor = vec4(vec3(0.6), 1.0);
+            material.metallic = 1.0;
+            material.roughness = 0.25;
+        }
+    }
+}

@@ -1,0 +1,69 @@
+// 雨（頂点属性なし描画）。粒子 i の位置は時刻とハッシュだけで決まる（コンピュート更新の代わり、状態を持たない）。
+// 頂点 6 個で1本の雨筋（カメラに向く縦長の板）。カメラを囲む箱の中で折り返す。
+material {
+    name : rain,
+    shadingModel : unlit,
+    parameters : [
+        { type : float3, name : boxSize },
+        { type : float3, name : wind },
+        { type : float, name : fallSpeed },
+        { type : float, name : nits },
+        { type : float3, name : tint },
+        { type : float, name : time }
+    ],
+    variables : [ quad ],
+    blending : add,
+    depthWrite : false,
+    culling : none,
+    featureLevel : 1,
+    variantFilter : [ skinning, shadowReceiver, vsm ]
+}
+
+vertex {
+    #include "common.glsl"
+
+    void materialVertex(inout MaterialVertexInputs material) {
+        int vid = getVertexIndex();
+        int pid = vid / 6;
+        int corner = vid - pid * 6;
+        float fp = float(pid);
+        vec3 r = vec3(bdHash11(fp * 1.13 + 0.1), bdHash11(fp * 2.71 + 0.3), bdHash11(fp * 0.57 + 0.7));
+        float t = materialParams.time;
+        vec3 box = materialParams.boxSize;
+        vec3 cam = getWorldCameraPosition();
+        vec3 camUser = (getUserWorldFromWorldMatrix() * vec4(cam, 1.0)).xyz;
+
+        // ワールド固定の格子で折り返す（カメラが動いても雨は流れない）
+        vec3 fall = vec3(0.0, -materialParams.fallSpeed * (0.85 + 0.3 * r.y), 0.0) + materialParams.wind;
+        vec3 pUser = r * box + fall * t;
+        pUser = camUser + (fract((pUser - camUser) / box + 0.5) - 0.5) * box;
+        vec3 p = pUser + (cam - camUser);
+
+        // 縦長の板（速度方向に伸ばし、横はカメラに向ける）
+        vec3 axis = normalize(fall);
+        vec3 toCam = normalize(cam - p);
+        vec3 side = normalize(cross(axis, toCam)) * 0.008;
+        float len = 0.55;
+        vec2 q;
+        if (corner == 0) q = vec2(-1.0, 0.0);
+        else if (corner == 1) q = vec2(1.0, 0.0);
+        else if (corner == 2) q = vec2(-1.0, 1.0);
+        else if (corner == 3) q = vec2(1.0, 0.0);
+        else if (corner == 4) q = vec2(1.0, 1.0);
+        else q = vec2(-1.0, 1.0);
+        material.worldPosition = vec4(p + side * q.x - axis * len * q.y, 1.0);
+        // 遠くの雨ほど薄く
+        float fade = 1.0 - smoothstep(box.z * 0.2, box.z * 0.5, length(p - cam));
+        material.quad = vec4(q, fade, r.z);
+    }
+}
+
+fragment {
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        vec2 q = variable_quad.xy;
+        float a = (1.0 - abs(q.x)) * smoothstep(0.0, 0.25, q.y) * smoothstep(1.0, 0.6, q.y) * variable_quad.z;
+        vec3 c = materialParams.tint * materialParams.nits * getExposure() * a * (0.5 + 0.5 * variable_quad.w);
+        material.baseColor = vec4(c, 0.0);
+    }
+}

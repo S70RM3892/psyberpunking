@@ -1,0 +1,68 @@
+// 歩行者（GPUスキニング）。custom0.x = 部位（0 肌, 1 上着, 2 ズボン, 3 靴, 4 髪, 5 発光ライン, 6 バイザー）
+material {
+    name : character,
+    shadingModel : lit,
+    requires : [ custom0, tangents ],
+    parameters : [
+        { type : float3, name : jacket },
+        { type : float3, name : pants },
+        { type : float3, name : skin },
+        { type : float3, name : hair },
+        { type : float3, name : glow },
+        { type : float, name : glowNits },
+        { type : float, name : time }
+    ],
+    variables : [ attrs, lpos ],
+    specularAntiAliasing : true
+}
+
+vertex {
+    void materialVertex(inout MaterialVertexInputs material) {
+        material.attrs = getCustom0();
+        material.lpos = vec4(getPosition().xyz, 0.0);
+    }
+}
+
+fragment {
+    #include "common.glsl"
+
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        float part = variable_attrs.x + 0.5;
+        vec3 lp = variable_lpos.xyz;
+        vec3 base;
+        float rough = 0.7, metal = 0.0, sheen = 0.0;
+        material.emissive = vec4(0.0);
+        if (part < 1.0) {
+            base = materialParams.skin;
+            rough = 0.5;
+        } else if (part < 2.0) {
+            // 上着：布目と、光沢のある合成皮革の切替
+            float weave = 0.9 + 0.1 * bdNoise2(lp.xy * 180.0);
+            base = materialParams.jacket * weave;
+            rough = 0.55;
+            metal = 0.05;
+        } else if (part < 3.0) {
+            base = materialParams.pants * (0.9 + 0.1 * bdNoise2(lp.xz * 150.0));
+            rough = 0.8;
+        } else if (part < 4.0) {
+            base = vec3(0.04);
+            rough = 0.35;
+        } else if (part < 5.0) {
+            base = materialParams.hair;
+            rough = 0.45;
+        } else if (part < 6.0) {
+            base = vec3(0.02);
+            material.emissive = vec4(materialParams.glow * materialParams.glowNits *
+                                     (0.8 + 0.2 * sin(materialParams.time * 3.0 + lp.x * 20.0)), 1.0);
+        } else {
+            // バイザー：半透明っぽい発光
+            base = vec3(0.01);
+            rough = 0.1;
+            material.emissive = vec4(vec3(0.1, 0.9, 1.0) * materialParams.glowNits * 0.6, 1.0);
+        }
+        material.baseColor = vec4(base, 1.0);
+        material.roughness = rough;
+        material.metallic = metal;
+    }
+}

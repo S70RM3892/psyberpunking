@@ -1,0 +1,60 @@
+// 夜空のドーム（カメラに追従する球の内側）。街明かりに照らされた低い雲、地平線の光害、まばらな星、月。
+material {
+    name : sky,
+    shadingModel : unlit,
+    parameters : [
+        { type : float3, name : moonDir },
+        { type : float, name : nits },
+        { type : float, name : time }
+    ],
+    variables : [ dir ],
+    culling : front,
+    depthWrite : false,
+    variantFilter : [ skinning, shadowReceiver, vsm ]
+}
+
+vertex {
+    void materialVertex(inout MaterialVertexInputs material) {
+        material.dir = vec4(getPosition().xyz, 0.0);
+    }
+}
+
+fragment {
+    #include "common.glsl"
+
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        vec3 d = normalize(variable_dir.xyz);
+        float h = d.y;
+        float t = materialParams.time;
+
+        // 地平線の光害（マゼンタ〜オレンジ）から天頂の濃紺へ
+        vec3 zenith = vec3(0.010, 0.012, 0.035);
+        vec3 horizon = vec3(0.16, 0.055, 0.10);
+        vec3 low = vec3(0.22, 0.09, 0.05);
+        vec3 sky = mix(horizon, zenith, smoothstep(0.0, 0.45, h));
+        sky = mix(low, sky, smoothstep(-0.02, 0.08, h));
+
+        // 雲（下から街に照らされる）
+        vec2 cp = d.xz / max(h + 0.12, 0.05) * 0.9 + vec2(t * 0.006, 0.0);
+        float cloud = smoothstep(0.45, 0.8, bdFbm2(cp * 1.3));
+        vec3 cloudCol = mix(vec3(0.20, 0.07, 0.12), vec3(0.06, 0.07, 0.12), smoothstep(0.0, 0.5, h));
+        sky = mix(sky, cloudCol, cloud * smoothstep(-0.02, 0.1, h) * 0.85);
+
+        // 星（雲の切れ間だけ）
+        vec3 sp = d * 380.0;
+        float star = step(0.9965, bdHash31(floor(sp))) * smoothstep(0.15, 0.6, h) * (1.0 - cloud);
+        star *= 0.6 + 0.4 * sin(t * 2.0 + bdHash31(floor(sp) + 1.0) * 30.0);
+        sky += vec3(0.8, 0.85, 1.0) * star * 0.6;
+
+        // 月と暈
+        vec3 md = normalize(materialParams.moonDir);
+        float mu = dot(d, md);
+        float disk = smoothstep(0.99955, 0.9997, mu);
+        float halo = pow(max(mu, 0.0), 180.0) * 0.25 + pow(max(mu, 0.0), 12.0) * 0.04;
+        sky += vec3(0.9, 0.95, 1.0) * (disk * 3.0 + halo) * (1.0 - cloud * 0.7);
+
+        material.baseColor = vec4(0.0, 0.0, 0.0, 1.0);
+        material.emissive = vec4(sky * materialParams.nits, 1.0);
+    }
+}

@@ -1,0 +1,29 @@
+# ビルド成果物
+/build*/
+/out/
+/results/
+*.o
+
+# 取得物（tools/fetch_filament.sh と tools/fetch_assets.py が作る）
+/third_party/filament/linux/
+/third_party/filament/android/
+/third_party/filament/.cache/
+/assets/
+/assets_src/*
+!/assets_src/README.md
+
+# Android
+/android/.gradle/
+/android/build/
+/android/app/build/
+/android/app/.cxx/
+/android/local.properties
+/android/app/src/main/assets/generated/
+*.keystore
+*.jks
+
+# エディタ
+.idea/
+.vscode/
+*.iml
+.DS_Store

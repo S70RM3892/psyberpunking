@@ -1,0 +1,139 @@
+// 路面（車道・歩道・縁石・高架床・路地・交差点）。雨で濡れ、水たまりがネオンを映す（SSR）。
+// custom0: x = 種別（0 車道, 1 歩道, 2 縁石, 3 高架床, 4 路地, 5 交差点）, y = 車線幅 / 交差点の半幅X,
+//          z = 片側車線数 / 交差点の半幅Z, w = 濡れ具合。uv0 は種別ごとの実寸座標（車道は u = 中心からの距離, v = 沿った距離）。
+material {
+    name : ground,
+    shadingModel : lit,
+    requires : [ uv0, custom0, tangents ],
+    parameters : [
+        { type : sampler2d, name : asphaltAlbedo },
+        { type : sampler2d, name : asphaltNormal },
+        { type : sampler2d, name : asphaltOrm },
+        { type : sampler2d, name : pavingAlbedo },
+        { type : sampler2d, name : pavingNormal },
+        { type : float, name : wetness },
+        { type : float, name : time }
+    ],
+    variables : [ attrs, wpos ],
+    specularAntiAliasing : true,
+    variantFilter : [ skinning ]
+}
+
+vertex {
+    void materialVertex(inout MaterialVertexInputs material) {
+        material.attrs = getCustom0();
+        material.wpos = getUserWorldFromWorldMatrix() * material.worldPosition;
+    }
+}
+
+fragment {
+    #include "common.glsl"
+
+    // 車線の区画線。u = 道路中心からの距離[m], v = 道路に沿った距離[m]
+    float laneMarking(float u, float v, float laneW, float lanes, out vec3 color) {
+        color = vec3(0.75);
+        float au = abs(u);
+        float m = 0.0;
+        if (lanes > 0.5) {
+            // 中央の二重黄線
+            float center = step(abs(au - 0.18), 0.06);
+            if (center > 0.0) {
+                color = vec3(0.75, 0.55, 0.08);
+                m = center;
+            }
+            // 車線境界（破線 3m 描いて 6m 空ける）
+            for (int k = 1; k < 3; k++) {
+                float fk = float(k);
+                if (fk >= lanes) break;
+                float dash = step(fract(v / 9.0), 0.33);
+                m = max(m, step(abs(au - laneW * fk), 0.07) * dash);
+            }
+            // 外側線
+            m = max(m, step(abs(au - laneW * lanes - 0.25), 0.08));
+        }
+        return m;
+    }
+
+    void material(inout MaterialInputs material) {
+        vec4 c = variable_attrs;
+        float kind = c.x;
+        vec2 uv = getUV0();
+        vec3 wp = variable_wpos.xyz;
+        float wet = clamp(c.w * materialParams.wetness, 0.0, 1.0);
+        float puddle = bdPuddle(wp.xz, wet);
+        if (kind > 0.5 && kind < 2.5) puddle *= 0.35;   // 歩道・縁石は水たまりが少ない
+        if (kind > 3.5 && kind < 4.5) puddle = max(puddle, 0.3 * wet);
+
+        // ---- 法線（水たまりは平ら） ----
+        vec2 tuv = wp.xz * 0.28;
+        vec3 nA = texture(materialParams_asphaltNormal, tuv).xyz * 2.0 - 1.0;
+        vec3 nP = texture(materialParams_pavingNormal, wp.xz * 0.6).xyz * 2.0 - 1.0;
+        bool paved = kind > 0.5 && kind < 2.5;
+        vec3 n = paved ? nP : nA;
+        // 雨粒の波紋（時間で広がる同心円）
+        vec2 cellR = floor(wp.xz * 2.0);
+        vec2 fr = fract(wp.xz * 2.0) - 0.5;
+        float tr = fract(materialParams.time * 0.9 + bdHash21(cellR));
+        float ring = sin(clamp(length(fr) - tr * 0.5, -0.05, 0.05) * 60.0) * (1.0 - tr) * puddle;
+        n = normalize(mix(n, vec3(0.0, 0.0, 1.0), puddle * 0.9) + vec3(ring * 0.07, ring * 0.07, 0.0));
+        material.normal = n;
+        prepareMaterial(material);
+
+        vec3 base;
+        float rough;
+        if (paved) {
+            // 歩道のタイル（0.6m 目地）
+            vec3 t = texture(materialParams_pavingAlbedo, wp.xz * 0.6).rgb;
+            vec2 tile = floor(wp.xz / 0.6);
+            float tr2 = bdHash21(tile);
+            vec2 g = abs(fract(wp.xz / 0.6) - 0.5);
+            float grout = step(0.46, max(g.x, g.y));
+            base = vec3(0.28, 0.27, 0.26) * (0.8 + 0.4 * tr2) * t * 2.0 * (1.0 - 0.5 * grout);
+            rough = mix(0.62, 0.9, grout);
+            if (kind > 1.5) {   // 縁石
+                base = vec3(0.38, 0.37, 0.35) * t * 2.0;
+                rough = 0.75;
+            }
+        } else {
+            vec3 t = texture(materialParams_asphaltAlbedo, tuv).rgb;
+            vec3 orm = texture(materialParams_asphaltOrm, tuv).rgb;
+            float patchN = bdFbm2(wp.xz * 0.05);
+            base = vec3(0.075, 0.075, 0.08) * t * 2.2 * (0.8 + 0.4 * patchN);
+            rough = clamp(orm.g * 1.2, 0.5, 0.95);
+            if (kind > 3.5 && kind < 4.5) {
+                // 路地：汚れた舗装、油じみ
+                float oil = smoothstep(0.6, 0.75, bdNoise2(wp.xz * 0.35));
+                base *= mix(1.0, 0.5, oil);
+                rough = mix(rough, 0.25, oil);
+            }
+            // 区画線
+            vec3 mc;
+            float mark = 0.0;
+            if (kind < 0.5 || (kind > 2.5 && kind < 3.5)) {
+                mark = laneMarking(uv.x, uv.y, c.y, c.z, mc);
+            } else if (kind > 4.5) {
+                // 交差点：縁の近くに横断歩道
+                float hx = c.y, hz = c.z;
+                float nearEdge = step(hz - 3.6, abs(uv.y)) * step(abs(uv.y), hz - 0.6);
+                float stripes = step(0.5, fract(uv.x / 1.0));
+                mark = nearEdge * stripes * step(abs(uv.x), hx - 0.5);
+                mc = vec3(0.8);
+            }
+            float worn = 0.65 + 0.35 * bdNoise2(wp.xz * 3.0);
+            base = mix(base, mc * worn, mark);
+            rough = mix(rough, 0.55, mark);
+        }
+
+        // 濡れ：色が濃く、つやが出る。水たまりはほぼ鏡面
+        base *= mix(1.0, 0.55, wet);
+        rough = mix(rough, rough * 0.55, wet);
+        base = mix(base, base * 0.4, puddle);
+        rough = mix(rough, 0.03, puddle);
+
+        material.baseColor = vec4(base, 1.0);
+        material.metallic = 0.0;
+        material.roughness = rough;
+        material.reflectance = mix(0.5, 0.7, puddle);
+        material.emissive = vec4(0.0);
+    }
+}
