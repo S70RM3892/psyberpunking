@@ -11,6 +11,7 @@ material {
         { type : float3, name : paint },
         { type : float3, name : underglow },
         { type : float, name : lightNits },
+        { type : float, name : brake },
         { type : float, name : time }
     ],
     variables : [ attrs ],
@@ -67,7 +68,8 @@ fragment {
             material.baseColor = vec4(0.3, 0.0, 0.0, 1.0);
             material.metallic = 0.0;
             material.roughness = 0.2;
-            material.emissive = vec4(vec3(1.0, 0.02, 0.03) * materialParams.lightNits * 0.45, 1.0);
+            // ブレーキで明るく（交通車は brake = 0 のまま）
+            material.emissive = vec4(vec3(1.0, 0.02, 0.03) * materialParams.lightNits * 0.45 * (1.0 + 2.5 * materialParams.brake), 1.0);
         } else if (part < 6.0) {
             material.baseColor = vec4(vec3(0.02), 1.0);
             material.metallic = 0.0;

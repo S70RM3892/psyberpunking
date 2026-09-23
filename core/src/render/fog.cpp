@@ -86,14 +86,16 @@ void Fog::update(double time, uint32_t frame, const std::vector<LightSample>& ne
     mi_->setParameter("time", static_cast<float>(time));
     mi_->setParameter("moonDir", normalize(moonDir));
 
-    float4 pos[16] = {}, col[16] = {};
+    float4 pos[16] = {}, col[16] = {}, dir[16] = {};
     const int n = std::min<int>(16, static_cast<int>(nearest.size()));
     for (int i = 0; i < n; ++i) {
         pos[i] = float4{nearest[i].position, nearest[i].range};
         col[i] = float4{nearest[i].color, nearest[i].spot};
+        dir[i] = float4{normalize(nearest[i].dir), nearest[i].coneCos};
     }
     mi_->setParameter("lightPos", pos, 16);
     mi_->setParameter("lightColor", col, 16);
+    mi_->setParameter("lightDir", dir, 16);
     mi_->setParameter("lightCount", static_cast<float>(n));
 }
 

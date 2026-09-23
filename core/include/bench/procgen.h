@@ -124,6 +124,11 @@ struct CityData {
     std::vector<Lane> roadLanes;            // 地上の車線
     std::vector<Lane> overpassLanes;        // 高架上の車線
     std::vector<SteamVent> vents;
+    // 当たり判定用（ドライブ）：街区の台（歩道の縁石から内側。ビルはこの中）と高架の橋脚
+    std::vector<Aabb> blocks;
+    std::vector<Aabb> overpassPillars;
+    float overpassTopHalfWidth = 7.f;   // 高架の平らな区間の床の半幅（ランプは rampHalfWidth）
+    float rampHalfWidth = 5.5f;
     std::vector<float3> pathPoints;         // カメラパスの骨格（折れ線）。カメラパス生成と優先度付けで共用
     Aabb bounds;
 
@@ -141,6 +146,8 @@ struct CityData {
 
     // 高架の床の高さ（ランプ含む）。範囲外は 0
     float overpassHeightAt(float z) const;
+    // 高架の床の半幅（z の位置で。範囲外は 0）
+    float overpassHalfWidthAt(float z) const;
 
     size_t archetypeTriangles(int lod) const;
     // 決定性テスト用：全メッシュと全配置のハッシュ

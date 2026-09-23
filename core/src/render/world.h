@@ -11,6 +11,21 @@
 
 namespace bench::render {
 
+// カメラの位置・向き（ベンチはカメラパスから、ドライブは追従カメラから作る）
+struct ViewPose {
+    math::float3 eye{0};
+    math::float3 forward{0, 0, 1};
+    float fovDeg = 60.f;
+    float focusDistance = 20.f;  // 被写界深度のピント[m]
+};
+
+// 自車（ドライブのみ）。build 時に BuildInput::player を立てると作られる
+struct PlayerCarState {
+    math::mat4f transform;       // 車体（接地面が原点、+Z が前）
+    float brake = 0.f;           // 0..1 ブレーキランプ
+    bool headlights = true;
+};
+
 class World {
 public:
     struct BuildInput {
@@ -19,12 +34,17 @@ public:
         const CityData* city = nullptr;
         const CameraPath* path = nullptr;
         Platform* platform = nullptr;
+        bool player = false;     // 自車（とヘッドライト）を作る
+        int playerModel = 2;     // 0 セダン, 1 バン, 2 スポーツ
     };
 
     bool build(Engine& engine, Scene& scene, View& view, Camera& camera, const BuildInput& in,
                const std::function<void(float)>& progress, std::string* error);
-    // 時刻 t（周回内 0..60s）の状態にする。frame はTAA/霧のジッタ用
+    // 時刻 t（周回内 0..60s）の状態にする。カメラはカメラパスから。frame はTAA/霧のジッタ用
     void update(double t, uint32_t frame);
+    // 時刻 t の街を、任意の視点から描く状態にする（ドライブ用）
+    void update(double t, uint32_t frame, const ViewPose& view);
+    void setPlayerCar(const PlayerCarState& state);
     void destroy(Engine& engine);
 
     RenderStats stats() const { return stats_; }
@@ -109,6 +129,16 @@ private:
     std::vector<Vehicle> vehicles_;
     std::vector<VehicleEntity> vehicleEntities_;
     std::vector<LightEntity> lights_;
+    // 自車（ドライブのみ）
+    struct PlayerCar {
+        bool enabled = false;
+        utils::Entity entity;
+        int drawable = -1;
+        MaterialInstance* mi = nullptr;
+        std::array<utils::Entity, 2> headlights;
+        PlayerCarState state;
+        std::array<LightDef, 2> headDefs;  // 霧に渡す光源（毎フレーム位置を更新）
+    } player_;
     utils::Entity moon_;
     utils::Entity sky_;
     math::float3 moonDir_;

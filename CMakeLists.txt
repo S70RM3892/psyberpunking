@@ -60,3 +60,6 @@ if(BENCH_BUILD_TESTS)
     enable_testing()
     add_subdirectory(core/tests)
 endif()
+
+# ドライブ（別アプリ）。core/tests の後に置く（gtest を共有する）
+add_subdirectory(drive)

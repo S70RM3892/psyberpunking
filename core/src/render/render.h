@@ -93,7 +93,9 @@ struct LightSample {
     math::float3 position;
     math::float3 color;   // リニア × 強度（フォグの散乱用に正規化済み）
     float range = 10.f;
-    float spot = 0.f;     // 下向きスポットなら > 0
+    float spot = 0.f;     // スポットなら > 0（円錐の外は散乱しない）
+    math::float3 dir{0, -1, 0};  // スポットの向き（街灯・看板は下向き、ヘッドライトは前向き）
+    float coneCos = 0.3f;        // 円錐の縁（向きとの内積がこれ未満は暗い）
 };
 
 class Fog {

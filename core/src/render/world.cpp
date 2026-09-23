@@ -21,6 +21,8 @@ constexpr uint8_t kLayerVisible = 0x1;
 constexpr uint8_t kLayerHidden = 0x2;
 constexpr float kPi = 3.14159265358979f;
 constexpr size_t kMaxSceneLights = 250;
+// 自車のヘッドライト1灯の光束。実車の LED ロービーム（約3000lm）より強め：夜の露出で路面の照らしが見えるように
+constexpr float kHeadlightLumens = 6000.0f;
 
 mat4f placement(const Placement& p, float scale = 1.0f) {
     return mat4f::translation(p.position) * mat4f::rotation(p.yaw, float3{0, 1, 0}) * mat4f::scaling(float3{scale});
@@ -280,6 +282,39 @@ bool World::build(Engine& engine, Scene& scene, View& view, Camera& camera, cons
             vehicleEntities_.push_back(ve);
         }
     }
+    // ---- 自車（ドライブのみ）：車体と、ヘッドライト2灯（片方は影を落とす） ----
+    if (in.player) {
+        player_.enabled = true;
+        MaterialInstance* mi = materials_.get("vehicle")->createInstance();
+        mi->setParameter("paint", float3{0.52f, 0.55f, 0.60f});          // シルバー（夜のネオンがよく映り込む）
+        mi->setParameter("underglow", float3{0.1f, 0.9f, 1.0f} * 2.0f);   // 下廻りのシアン
+        mi->setParameter("lightNits", 900.0f);
+        mi->setParameter("brake", 0.0f);
+        ownedMis_.push_back(mi);
+        player_.mi = mi;
+        const GpuMesh& m = vehicleMeshes_[std::clamp(in.playerModel, 0, 2)];
+        player_.entity = makeRenderable({{&m, mi}}, mat4f{}, true, true);
+        player_.drawable = addDrawable(player_.entity, {}, m.triangles, 1, true);
+        for (int k = 0; k < 2; ++k) {
+            player_.headlights[k] = utils::EntityManager::get().create();
+            LightManager::Builder(LightManager::Type::FOCUSED_SPOT)
+                .color(float3{1.0f, 0.95f, 0.86f})
+                .intensity(kHeadlightLumens)
+                .position(float3{0})
+                .direction(float3{0, 0, 1})
+                .spotLightCone(0.22f, 0.5f)
+                .falloff(60.0f)
+                // 影は落とさない：ランプは車体の前端のすぐ先にあり、影を付けても見えるのは自車の鼻先だけ（重さに見合わない）
+                .castShadows(false)
+                .build(engine, player_.headlights[k]);
+            scene.addEntity(player_.headlights[k]);
+            LightDef& d = player_.headDefs[k];
+            d.kind = LightKind::NeonSpot;
+            d.color = float3{1.0f, 0.95f, 0.86f};
+            d.intensity = kHeadlightLumens;
+            d.falloff = 60.0f;
+        }
+    }
     report(0.86f);
 
     // ---- 光源 ----
@@ -371,17 +406,12 @@ bool World::build(Engine& engine, Scene& scene, View& view, Camera& camera, cons
 }
 
 void World::update(double t, uint32_t frame) {
-    Engine& engine = *engine_;
-    auto& tcm = engine.getTransformManager();
-    auto& rcm = engine.getRenderableManager();
-    auto& lcm = engine.getLightManager();
-
-    // ---- カメラ ----
+    // ---- カメラ（ベンチ：カメラパス） ----
     CameraKey key = path_->sample(t);
-    const float3 eye = key.position;
-    const float aspect = static_cast<float>(cfg_->width) / static_cast<float>(cfg_->height);
-    camera_->setProjection(key.fovDeg, aspect, 0.1, 2500.0, Camera::Fov::VERTICAL);
-    camera_->lookAt(eye, eye + key.forward, float3{0, 1, 0});
+    ViewPose v;
+    v.eye = key.position;
+    v.forward = key.forward;
+    v.fovDeg = key.fovDeg;
     // ピント：大通りは25m先の看板、高架は45m先の街並み、路地は9m先。区間の境目は滑らかに移す
     {
         auto smooth = [](float e0, float e1, float x) {
@@ -389,9 +419,54 @@ void World::update(double t, uint32_t frame) {
             return k * k * (3.0f - 2.0f * k);
         };
         const float tn = static_cast<float>(t * 60.0 / std::max(1.0, cfg_->cameraPath.duration));
-        float focus = 25.0f + 20.0f * smooth(19.f, 24.f, tn) - 36.0f * smooth(39.f, 47.f, tn);
-        camera_->setFocusDistance(focus);
+        v.focusDistance = 25.0f + 20.0f * smooth(19.f, 24.f, tn) - 36.0f * smooth(39.f, 47.f, tn);
     }
+    update(t, frame, v);
+}
+
+void World::setPlayerCar(const PlayerCarState& state) {
+    if (!player_.enabled) return;
+    Engine& engine = *engine_;
+    auto& tcm = engine.getTransformManager();
+    auto& lcm = engine.getLightManager();
+    player_.state = state;
+    tcm.setTransform(tcm.getInstance(player_.entity), state.transform);
+    player_.mi->setParameter("brake", std::clamp(state.brake, 0.0f, 1.0f));
+    const float3 pos = state.transform[3].xyz;
+    Drawable& d = drawables_[player_.drawable];
+    d.bounds = {};
+    d.bounds.add(pos - float3{2.8f, 0, 2.8f});
+    d.bounds.add(pos + float3{2.8f, 2.2f, 2.8f});
+    // ヘッドライト：車体の前端・ランプの高さ。少し下向き、左右わずかに外へ
+    for (int k = 0; k < 2; ++k) {
+        const float sx = k == 0 ? -0.62f : 0.62f;
+        const float3 local{sx, 0.62f, 2.3f};  // 前バンパーのすぐ先（車体の中に置くと鼻先で光が遮られる）
+        const float3 dirLocal = normalize(float3{sx * 0.05f, -0.09f, 1.0f});
+        const float3 wp = (state.transform * float4{local, 1.0f}).xyz;
+        const float3 wd = normalize((state.transform * float4{dirLocal, 0.0f}).xyz);
+        auto li = lcm.getInstance(player_.headlights[k]);
+        lcm.setPosition(li, wp);
+        lcm.setDirection(li, wd);
+        lcm.setIntensity(li, state.headlights ? kHeadlightLumens : 0.0f);
+        player_.headDefs[k].position = wp;
+        player_.headDefs[k].direction = wd;
+        player_.headDefs[k].intensity = state.headlights ? kHeadlightLumens : 0.0f;
+    }
+}
+
+void World::update(double t, uint32_t frame, const ViewPose& view) {
+    Engine& engine = *engine_;
+    auto& tcm = engine.getTransformManager();
+    auto& rcm = engine.getRenderableManager();
+    auto& lcm = engine.getLightManager();
+
+    // ---- カメラ ----
+    const float3 eye = view.eye;
+    const float3 forward = normalize(view.forward);
+    const float aspect = static_cast<float>(cfg_->width) / static_cast<float>(cfg_->height);
+    camera_->setProjection(view.fovDeg, aspect, 0.1, 2500.0, Camera::Fov::VERTICAL);
+    camera_->lookAt(eye, eye + forward, float3{0, 1, 0});
+    camera_->setFocusDistance(view.focusDistance);
     tcm.setTransform(tcm.getInstance(sky_), mat4f::translation(eye));
 
     // ---- ビルのLOD（XZ距離、仕様の [60, 180, 500] m） ----
@@ -471,7 +546,7 @@ void World::update(double t, uint32_t frame) {
             if (lights_[i].def->kind == LightKind::NeonPoint) continue;
             float3 to = lights_[i].def->position - eye;
             float d = length(to);
-            float facing = dot(to / std::max(d, 1e-3f), key.forward);
+            float facing = dot(to / std::max(d, 1e-3f), forward);
             if (d > 70.f || facing < -0.3f) continue;
             cand.push_back({d - facing * 10.f, static_cast<int>(i)});
         }
@@ -516,6 +591,22 @@ void World::update(double t, uint32_t frame) {
             float w = 1.f / (1.f + length(l.position - eye));
             steamTint += l.color * w;
             wsum += w;
+        }
+        // 自車のヘッドライトは雨の中の光の筋を見せたいので、必ず霧に渡す（先頭に入れる）
+        if (player_.enabled && player_.state.headlights) {
+            std::vector<LightSample> heads;
+            for (const LightDef& l : player_.headDefs) {
+                LightSample s;
+                s.position = l.position;
+                s.color = l.color * (l.intensity / (4.f * kPi) * 2.0f) * 0.35f;
+                s.range = l.falloff;
+                s.spot = 1.0f;
+                s.dir = l.direction;
+                s.coneCos = 0.86f;  // ≒ cos(0.53rad)：ランプの外側の円錐
+                heads.push_back(s);
+            }
+            nearest.insert(nearest.begin(), heads.begin(), heads.end());
+            if (nearest.size() > 16) nearest.resize(16);
         }
         steamTint = wsum > 0 ? steamTint / wsum : float3{0.5f};
         steamTint = steamTint * 0.45f + float3{0.45f, 0.45f, 0.5f};
@@ -595,6 +686,11 @@ void World::destroy(Engine& engine) {
     walkerEntities_.clear();
     for (auto& v : vehicleEntities_) destroyEntity(v.entity);
     vehicleEntities_.clear();
+    if (player_.enabled) {
+        destroyEntity(player_.entity);
+        for (auto e : player_.headlights) destroyEntity(e);
+        player_ = {};
+    }
     for (auto& l : lights_) destroyEntity(l.entity);
     lights_.clear();
     destroyEntity(moon_);

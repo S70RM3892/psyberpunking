@@ -458,6 +458,11 @@ float CityData::overpassHeightAt(float z) const {
     return overpassY * (1.0f - smooth((z - overpassEndZ) / rampLength));
 }
 
+float CityData::overpassHalfWidthAt(float z) const {
+    if (z < rampStartZ || z > downRampEndZ) return 0.f;
+    return (z >= rampStartZ + rampLength && z <= overpassEndZ) ? overpassTopHalfWidth : rampHalfWidth;
+}
+
 size_t CityData::archetypeTriangles(int lod) const {
     size_t n = 0;
     for (const auto& a : archetypes) n += a.lods[lod].triangles();
@@ -941,6 +946,10 @@ CityData generateCity(const SceneConfig& cfg) {
                         float x0s = bx0[i] - sv[i], x1s = bx0[i] + bsx + sv[i + 1];
                         m.addQuad({x0s, kSlab, z1}, {x1s, kSlab, z1}, {x1s, kSlab, z0}, {x0s, kSlab, z0}, {x0s, z1}, {x1s, z0},
                                   groundC(GroundKind::Sidewalk, 0, 0, 0.5f));
+                        Aabb blk;
+                        blk.add(float3{x0s, 0.f, z0});
+                        blk.add(float3{x1s, kSlab, z1});
+                        city.blocks.push_back(blk);
                         // 縁石（4面）
                         float4 curb = groundC(GroundKind::Curb, 0, 0, 0.4f);
                         m.addQuad({x0s, 0, z1}, {x1s, 0, z1}, {x1s, kSlab, z1}, {x0s, kSlab, z1}, {x0s, 0}, {x1s, kSlab}, curb);
@@ -958,6 +967,8 @@ CityData generateCity(const SceneConfig& cfg) {
     }
 
     // ---- 高架 ----------------------------------------------------------------------------------
+    city.overpassTopHalfWidth = cfg.city.overpassWidth * 0.5f;
+    city.rampHalfWidth = 5.5f;
     {
         const float4 deck{static_cast<float>(GroundKind::OverpassDeck), 3.5f, 2.f, 0.6f};
         const float4 concrete = detailCustom(DetailKind::Concrete);
@@ -1010,6 +1021,10 @@ CityData generateCity(const SceneConfig& cfg) {
                 bool top0 = pz >= city.rampStartZ + rampLength && pz <= city.overpassEndZ;
                 float hw = top0 ? cfg.city.overpassWidth * 0.5f : 5.5f;
                 td.mesh.addBox({bxv, (h - 1.2f) * 0.5f, pz}, {0.8f, (h - 1.2f) * 0.5f, 1.2f}, 1, concrete, false);
+                Aabb pil;
+                pil.add(float3{bxv - 0.8f, 0.f, pz - 1.2f});
+                pil.add(float3{bxv + 0.8f, h - 1.2f, pz + 1.2f});
+                city.overpassPillars.push_back(pil);
                 td.mesh.addBox({bxv, h - 1.7f, pz}, {hw - 0.5f, 0.5f, 1.0f}, 1, concrete, true);
             }
             t.bounds = t.mesh.bounds();

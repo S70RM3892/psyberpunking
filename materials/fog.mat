@@ -7,6 +7,7 @@ material {
     parameters : [
         { type : float4[16], name : lightPos },
         { type : float4[16], name : lightColor },
+        { type : float4[16], name : lightDir },
         { type : float, name : lightCount },
         { type : float3, name : moonDir },
         { type : float3, name : moonColor },
@@ -74,9 +75,11 @@ vertex {
             float d2 = dot(L, L);
             float win = clamp(1.0 - (d2 * d2) / (lp.w * lp.w * lp.w * lp.w), 0.0, 1.0);
             float atten = win * win / (d2 + 1.0);
-            // lc.w = スポットなら下向き円錐の鋭さ（0 = 点光源）
+            // lc.w = スポットなら円錐の強さ（0 = 点光源）
             vec3 Ln = L * inversesqrt(max(d2, 1e-4));
-            float cone = lc.w > 0.0 ? smoothstep(0.3, 0.8, dot(-Ln, vec3(0.0, -1.0, 0.0)) * lc.w) : 1.0;
+            // スポットは向き ld.xyz と縁 ld.w の円錐（街灯・看板は下向き 0.3、ヘッドライトは前向きで鋭い）
+            vec4 ld = materialParams.lightDir[i];
+            float cone = lc.w > 0.0 ? smoothstep(ld.w, ld.w + (1.0 - ld.w) * 0.7, dot(-Ln, ld.xyz) * lc.w) : 1.0;
             inscatter += lc.rgb * atten * cone * phaseHG(dot(-v, Ln), g);
         }
         float thickness = d1 - d0;

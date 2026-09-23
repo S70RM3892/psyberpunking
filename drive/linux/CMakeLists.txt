@@ -1,0 +1,10 @@
+find_package(SDL2 REQUIRED)
+
+add_executable(citydrive main.cpp)
+target_link_libraries(citydrive PRIVATE drive_core SDL2::SDL2)
+target_include_directories(citydrive PRIVATE ${BENCH_ROOT}/linux)
+target_link_options(citydrive PRIVATE -static-libstdc++ -static-libgcc)
+target_compile_options(citydrive PRIVATE ${BENCH_CXX_FLAGS})
+target_compile_definitions(citydrive PRIVATE BENCH_SOURCE_DIR="${BENCH_ROOT}")
+add_dependencies(citydrive bench_materials bench_scene_data)
+set_target_properties(citydrive PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
