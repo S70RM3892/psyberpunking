@@ -13,7 +13,9 @@ import kotlinx.coroutines.launch
 /**
  * サーマル状態の監視。
  *  - addThermalStatusListener の通知 → 状態（NONE..SHUTDOWN）
- *  - 1秒ごとに getThermalHeadroom(10) → ヘッドルーム（1.0 で SEVERE 相当のスロットリング）
+ *  - 10秒ごとに getThermalHeadroom(10) → ヘッドルーム（0.0 でスロットリングなし、1.0 で SEVERE 相当）
+ *    公式の制約：呼び出しは10秒に1回まで。それより頻繁だと NaN が返る
+ *    （https://developer.android.com/games/optimize/adpf/thermal）
  * どちらもネイティブへ転送し、フレームごとの記録に入る。
  */
 class ThermalMonitor(context: Context, private val onChange: (status: Int, headroom: Float) -> Unit) {
@@ -34,11 +36,13 @@ class ThermalMonitor(context: Context, private val onChange: (status: Int, headr
         pm.addThermalStatusListener(context.mainExecutor, listener)
         job = scope.launch {
             while (isActive) {
-                // 呼び出し間隔は1秒以上あける（それより短いと NaN が返る）
                 val h = pm.getThermalHeadroom(10)
-                _headroom.value = h
-                onChange(_status.value, if (h.isNaN()) -1f else h)
-                delay(1000)
+                // 一時的な NaN（呼び出し間隔の制約など）では直前の有効値を保つ。
+                // 一度も値が取れない端末は NaN のまま＝非対応として扱う
+                if (!h.isNaN()) _headroom.value = h
+                val v = _headroom.value
+                onChange(_status.value, if (v.isNaN()) -1f else v)
+                delay(10_000)
             }
         }
     }
