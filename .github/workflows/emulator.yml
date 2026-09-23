@@ -49,8 +49,13 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
-      - uses: android-actions/setup-android@v3
-      - run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.14206865" "cmake;3.31.6"
+      # ランナーに入っている Android SDK をそのまま使う（setup-android@v3 は廃止済みの "tools" を入れようとして落ちる）
+      - name: Android SDK packages
+        run: |
+          SDKM=$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -1)
+          (yes || true) | "$SDKM" --licenses > /dev/null
+          "$SDKM" "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.14206865" "cmake;3.31.6" | grep -v '^\[' || true
+          test -d "$ANDROID_HOME/ndk/29.0.14206865" && test -d "$ANDROID_HOME/cmake/3.31.6"
       - uses: actions/cache@v4
         with:
           path: third_party/filament/.cache
