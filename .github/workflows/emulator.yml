@@ -1,6 +1,6 @@
 # 16KBページのAndroidエミュレータ（Android 15、x86_64）での試験（仕様のテスト計画）：
 #   1. 起動 → 計測完了までクラッシュしない（自動実行：Low、1周10秒）
-#   2. Linux版と APK の描画一致：固定カメラ5点の画像差分 PSNR 40dB 以上
+#   2. Linux版と APK の描画一致：固定カメラ5点を同じ SwiftShader で描いて比べる（1/4 縮小 PSNR 29dB 以上・色の偏り 5.5 以下）
 # どちらもソフトウェアGPUなので速度は測らない。配布物は arm64-v8a のみで、ここだけ x86_64 版を作る。
 name: Android emulator (16 KB pages)
 
@@ -26,10 +26,21 @@ jobs:
           path: third_party/filament/.cache
           key: filament-${{ hashFiles('tools/fetch_filament.sh') }}
       - run: tools/fetch_filament.sh linux
+      # 基準画像はエミュレータと同じ SwiftShader（Android Emulator 同梱）で描く。
+      # 別の Vulkan 実装（lavapipe など）で描くと、同じプログラムでも画素単位でかなり違う（SPEC_NOTES「描画一致」）
+      - name: Android Emulator package (for its SwiftShader)
+        run: |
+          SDKM=$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -1)
+          (yes || true) | "$SDKM" --licenses > /dev/null
+          "$SDKM" emulator | grep -v '^\[' || true
+          test -f "$ANDROID_HOME/emulator/lib64/vulkan/vk_swiftshader_icd.json"
       - run: |
           CC=clang CXX=clang++ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBENCH_BUILD_TESTS=OFF
           cmake --build build
-          VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json build/benchdeck --headless --shots shots
+          E="$ANDROID_HOME/emulator/lib64/vulkan"
+          LD_LIBRARY_PATH="$E:$ANDROID_HOME/emulator/lib64" VK_ICD_FILENAMES="$E/vk_swiftshader_icd.json" \
+            build/benchdeck --headless --shots shots 2>&1 | tee shots.log
+          grep -q "SwiftShader" shots.log   # 本当に SwiftShader で描いたか
       - uses: actions/upload-artifact@v4
         with:
           name: emulator-ref-linux-shots

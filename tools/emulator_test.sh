@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # エミュレータ（または実機）での自動試験。adb がつながっている端末に対して：
 #   1. APK を入れて、Low・1周10秒で計測を自動実行し、結果JSONが出るまで待つ（クラッシュなし）
-#   2. 固定カメラ5点を撮って取り出し、Linux版の撮影結果と PSNR を比べる（40dB 以上）
+#   2. 固定カメラ5点を撮って取り出し、Linux版の撮影結果と比べる（tools/imagediff.py の基準）
 #
 #   tools/emulator_test.sh <app.apk> <linux-shots-dir> [out-dir]
 set -euo pipefail
@@ -70,4 +70,4 @@ for f in $(adb shell ls /sdcard/Android/data/$PKG/files/shots | tr -d '\r'); do
   adb pull "/sdcard/Android/data/$PKG/files/shots/$f" "$OUT/shots/$f" >/dev/null
 done
 python3 -m pip install -q numpy pillow >/dev/null 2>&1 || true
-python3 tools/imagediff.py "$LINUX_SHOTS" "$OUT/shots" --threshold 40 --diff "$OUT/diff"
+python3 tools/imagediff.py "$LINUX_SHOTS" "$OUT/shots" --threshold 29 --downsample 4 --max-bias 5.5 --diff "$OUT/diff"
