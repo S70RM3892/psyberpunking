@@ -15,3 +15,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "BenchDeck"
 include(":app")
+include(":drive")  // ドライブ（別アプリ）

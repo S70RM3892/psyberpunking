@@ -62,6 +62,21 @@ tar xzf benchdeck-<版>-linux-x86_64.tar.gz && cd benchdeck-<版>-linux-x86_64
 
 `version` を上げたらスコアの互換性は切れる（リリースノートに自動で書かれる）。
 
+## Drive（仮）— 同じ街を運転する（別アプリ）
+
+ベンチの街と描画をそのまま使い、Bluetooth のゲームパッドで自由に走る。ガチのレースではなく、雨の夜の街を流して楽しむ手触り。
+APK は Releases の `citydrive-<版>-arm64….apk`（ベンチとは別アプリとして並んで入る）、Linux 版は tar の中の `./citydrive`。
+
+| 操作 | ゲームパッド | キーボード（Linux） |
+| --- | --- | --- |
+| ハンドル | 左スティック | A / D、← / → |
+| アクセル / ブレーキ・後退 | RT / LT | W / S、↑ / ↓ |
+| サイドブレーキ（ドリフト） | A | Space |
+| 視点の切り替え / 道路に戻す | Y / B | C / R |
+| 見回す / ヘッドライト / 一時停止 | 右スティック / SELECT / START | — / H / Esc（終了） |
+
+設計（車の手触り・当たり判定・カメラ・音）と既知の制限は [docs/DRIVE.md](docs/DRIVE.md)。
+
 ## ビルド
 
 Linux ホスト（Ubuntu 24.04 で確認）。Filament の Linux 版が clang + libc++ なので、こちらも合わせる。
@@ -84,8 +99,9 @@ Android のビルドもマテリアルのために Linux の `matc` を使うの
 
 ```
 core/         bench_core（C++20）：シーン定義 / 手続き生成 / カメラパス / 描画(render/) / 計測・スコア
+drive/        ドライブ（別アプリ）：車両・当たり判定・追従カメラ・走行音・ゲームループ、Linux 版 citydrive
 linux/        SDL2 ホスト（ウィンドウ・ヘッドレス・撮影・キャリブレーション）
-android/      Gradle プロジェクト（Kotlin + Compose の UI、JNI、C++ の描画スレッド）
+android/      Gradle プロジェクト：app（ベンチ）と drive（ドライブ）。Kotlin + Compose の UI、JNI、C++ の描画スレッド
 materials/    .mat ソース（外壁・付帯物・路面・看板・人・車・空・雨・蒸気・霧）
 scenes/       scene_v1.json（負荷のノブ）と camera_path_v1.bin（30Hz のキー）
 tools/        Filament 取得、素材の取得・変換、画像差分、エミュレータ試験、リリースノート

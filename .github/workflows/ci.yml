@@ -67,6 +67,20 @@ jobs:
           # 同じバイナリ・同じ入力なら画素まで一致すること（決定性）
           python3 tools/imagediff.py shots/run1 shots/run2 --threshold 99
 
+      # ドライブ：自動運転で大通り → 高架 → 路地を最後まで走り切る（詰まらない・落ちない）。撮影と走行音も残す
+      - name: Drive smoke (autopilot)
+        env:
+          VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.json
+        run: |
+          mkdir -p drive-out
+          build/citydrive --headless --demo 60 --shots drive-out --wav drive-out/drive.wav | tee drive-out/log.txt
+          grep -q "finished=1" drive-out/log.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: drive-demo
+          path: drive-out
+
       - uses: actions/upload-artifact@v4
         with:
           name: linux-shots
@@ -105,19 +119,23 @@ jobs:
         working-directory: android
         run: ./gradlew --no-daemon assembleDebug testDebugUnitTest
 
-      - name: Check 16 KB alignment
+      - name: Check 16 KB alignment (bench and drive)
         run: |
-          APK=$(ls android/app/build/outputs/apk/debug/*.apk)
-          $ANDROID_HOME/build-tools/36.0.0/zipalign -c -P 16 -v 4 "$APK" | tail -1
-          unzip -o -q "$APK" 'lib/*' -d apk
           READELF=$ANDROID_HOME/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf
-          for so in apk/lib/*/*.so; do
-            bad=$($READELF -lW "$so" | awk '$1=="LOAD" && $NF!="0x4000" && $NF!="0x10000"')
-            if [ -n "$bad" ]; then echo "$so is not 16 KB aligned"; echo "$bad"; exit 1; fi
-            echo "$so: LOAD segments 16 KB aligned"
+          for APK in android/app/build/outputs/apk/debug/*.apk android/drive/build/outputs/apk/debug/*.apk; do
+            echo "== $APK"
+            $ANDROID_HOME/build-tools/36.0.0/zipalign -c -P 16 -v 4 "$APK" | tail -1
+            rm -rf apk && unzip -o -q "$APK" 'lib/*' -d apk
+            for so in apk/lib/*/*.so; do
+              bad=$($READELF -lW "$so" | awk '$1=="LOAD" && $NF!="0x4000" && $NF!="0x10000"')
+              if [ -n "$bad" ]; then echo "$so is not 16 KB aligned"; echo "$bad"; exit 1; fi
+              echo "$so: LOAD segments 16 KB aligned"
+            done
           done
 
       - uses: actions/upload-artifact@v4
         with:
           name: apk-debug
-          path: android/app/build/outputs/apk/debug/*.apk
+          path: |
+            android/app/build/outputs/apk/debug/*.apk
+            android/drive/build/outputs/apk/debug/*.apk

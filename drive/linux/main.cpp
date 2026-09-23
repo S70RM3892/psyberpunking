@@ -2,7 +2,7 @@
 //
 //   citydrive                          # ウィンドウ 1280×800、Deck プリセット
 //   citydrive --preset high --fullscreen
-//   citydrive --headless --demo 40 --shots out   # 自動運転で40秒走り、途中を撮影（CI・見た目の確認）
+//   citydrive --headless --demo 40 --shots out --wav out/drive.wav   # 自動運転で40秒走り、途中の撮影と走行音
 //
 // ゲームパッド：左スティック=ハンドル、RT=アクセル、LT=ブレーキ/後退、A=サイドブレーキ、
 //              Y=視点切替、B=道路に戻す、右スティック=見回し、BACK=ライト、START=終了
@@ -15,6 +15,7 @@
 #include <string>
 #include <vector>
 
+#include "drive/audio_synth.h"
 #include "drive/autopilot.h"
 #include "drive/drive_app.h"
 #include "png_writer.h"
@@ -59,11 +60,37 @@ float shapeAxis(Sint16 raw, float deadzone = 0.12f) {
 
 float shapeTrigger(Sint16 raw) { return std::clamp(static_cast<float>(raw) / 32767.f, 0.f, 1.f); }
 
+drive::AudioState audioFrom(const drive::DriveTelemetry& t, float volume) {
+    drive::AudioState a;
+    a.rpm = t.rpm;
+    a.throttle = t.throttle;
+    a.speed = t.speedKmh / 3.6f;
+    a.slip = t.slip;
+    a.impact = t.impact;
+    a.volume = volume;
+    return a;
+}
+
+// 16bit ステレオの WAV（ヘッドレスのデモ走行の音を確かめる用）
+void writeWav(const std::string& path, const std::vector<float>& lr, int rate) {
+    std::ofstream f(path, std::ios::binary);
+    auto u32 = [&](uint32_t v) { f.write(reinterpret_cast<const char*>(&v), 4); };
+    auto u16 = [&](uint16_t v) { f.write(reinterpret_cast<const char*>(&v), 2); };
+    const uint32_t bytes = static_cast<uint32_t>(lr.size() * 2);
+    f.write("RIFF", 4); u32(36 + bytes); f.write("WAVE", 4);
+    f.write("fmt ", 4); u32(16); u16(1); u16(2); u32(static_cast<uint32_t>(rate)); u32(static_cast<uint32_t>(rate) * 4); u16(4); u16(16);
+    f.write("data", 4); u32(bytes);
+    for (float v : lr) {
+        const int16_t q = static_cast<int16_t>(std::lround(std::clamp(v, -1.f, 1.f) * 32767.f));
+        f.write(reinterpret_cast<const char*>(&q), 2);
+    }
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
     std::setvbuf(stdout, nullptr, _IOLBF, 0);  // CI のログに逐次出す
-    std::string preset = "deck", shotsDir;
+    std::string preset = "deck", shotsDir, wavPath;
     bool headless = false, fullscreen = false;
     double demoSeconds = 0;
     for (int i = 1; i < argc; ++i) {
@@ -74,8 +101,9 @@ int main(int argc, char** argv) {
         else if (a == "--fullscreen") fullscreen = true;
         else if (a == "--demo") demoSeconds = std::stod(next());
         else if (a == "--shots") shotsDir = next();
+        else if (a == "--wav") wavPath = next();
         else {
-            std::fprintf(stderr, "usage: citydrive [--preset P] [--fullscreen] [--headless --demo SECONDS [--shots DIR]]\n");
+            std::fprintf(stderr, "usage: citydrive [--preset P] [--fullscreen] [--headless --demo SECONDS [--shots DIR] [--wav FILE]]\n");
             return 2;
         }
     }
@@ -88,7 +116,7 @@ int main(int argc, char** argv) {
     void* nativeWindow = nullptr;
     if (!headless) {
         SDL_SetHint(SDL_HINT_VIDEODRIVER, "x11");
-        if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_GAMECONTROLLER) != 0) {
+        if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_GAMECONTROLLER | SDL_INIT_AUDIO) != 0) {
             std::fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
             return 1;
         }
@@ -128,10 +156,19 @@ int main(int argc, char** argv) {
         int shot = 0;
         if (!shotsDir.empty()) fs::create_directories(shotsDir);
         std::vector<uint8_t> rgba;
+        drive::AudioSynth synth(48000);
+        std::vector<float> wav;
+        const int samplesPerStep = static_cast<int>(48000 * dt);
         for (double t = 0; t < demoSeconds && !pilot.finished(); t += dt) {
             drive::DriveInput in;
             in.car = pilot.drive(app.vehicle().state(), app.vehicle().params().wheelbase);
             app.simulate(dt, in);
+            if (!wavPath.empty()) {
+                synth.setState(audioFrom(app.telemetry(), 1.f));
+                const size_t at = wav.size();
+                wav.resize(at + static_cast<size_t>(samplesPerStep) * 2);
+                synth.render(wav.data() + at, samplesPerStep);
+            }
             if (t >= nextShot) {
                 nextShot += shotEvery;
                 // カメラのばねを落ち着かせてから撮る（同じ状態を数フレーム）
@@ -151,6 +188,10 @@ int main(int argc, char** argv) {
         auto tm = app.telemetry();
         std::printf("demo end: pos=(%.1f %.1f %.1f) finished=%d\n", tm.position.x, tm.position.y, tm.position.z,
                     pilot.finished() ? 1 : 0);
+        if (!wavPath.empty()) {
+            writeWav(wavPath, wav, 48000);
+            std::printf("audio: %s (%.1f s)\n", wavPath.c_str(), wav.size() / 2 / 48000.0);
+        }
         return 0;
     }
 
@@ -163,6 +204,24 @@ int main(int argc, char** argv) {
         if (pad) std::fprintf(stderr, "gamepad: %s\n", SDL_GameControllerName(pad));
     };
     openPad();
+
+    // 音：SDL のコールバックで合成（無ければ無音で続ける）
+    drive::AudioSynth synth(48000);
+    SDL_AudioDeviceID audio = 0;
+    {
+        SDL_AudioSpec want{}, have{};
+        want.freq = 48000;
+        want.format = AUDIO_F32SYS;
+        want.channels = 2;
+        want.samples = 512;
+        want.callback = [](void* user, Uint8* stream, int len) {
+            static_cast<drive::AudioSynth*>(user)->render(reinterpret_cast<float*>(stream), len / static_cast<int>(sizeof(float) * 2));
+        };
+        want.userdata = &synth;
+        audio = SDL_OpenAudioDevice(nullptr, 0, &want, &have, 0);
+        if (audio) SDL_PauseAudioDevice(audio, 0);
+        else std::fprintf(stderr, "no audio: %s\n", SDL_GetError());
+    }
 
     bool quit = false, headlights = true;
     float kbSteer = 0.f;
@@ -223,6 +282,7 @@ int main(int argc, char** argv) {
         }
         in.headlights = headlights;
         app.frame(dt, in);
+        synth.setState(audioFrom(app.telemetry(), 1.f));
 
         ++frames;
         titleTimer += dt;
@@ -237,6 +297,7 @@ int main(int argc, char** argv) {
             frames = 0;
         }
     }
+    if (audio) SDL_CloseAudioDevice(audio);
     if (pad) SDL_GameControllerClose(pad);
     SDL_DestroyWindow(window);
     SDL_Quit();

@@ -6,6 +6,7 @@ add_library(drive_model STATIC
     core/src/vehicle.cpp
     core/src/chase_camera.cpp
     core/src/autopilot.cpp
+    core/src/audio_synth.cpp
 )
 target_include_directories(drive_model PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/core/include)
 target_link_libraries(drive_model PUBLIC bench_model)

@@ -27,3 +27,7 @@
 .vscode/
 *.iml
 .DS_Store
+
+# Android の各モジュール（app・drive）のビルド出力
+android/*/build/
+android/*/.cxx/

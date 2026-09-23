@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Drive (working title)</string>
+    <string name="tagline">Cruise a rain-soaked neon city at night</string>
+    <string name="quality">Quality</string>
+    <string name="quality_low">Low</string>
+    <string name="quality_standard">Standard</string>
+    <string name="quality_high">High</string>
+    <string name="quality_hint">D-pad ← → to change. Standard keeps 60 fps on current flagship tablets.</string>
+    <string name="controller_connected">Controller: %1$s</string>
+    <string name="controller_missing">No controller. Connect a Bluetooth gamepad to drive.</string>
+    <string name="controller_lost">Controller disconnected — reconnect and press START</string>
+    <string name="start">Drive (A / START)</string>
+    <string name="controls">Controls</string>
+    <string name="ctl_steer">Steer</string>
+    <string name="ctl_throttle">Accelerate</string>
+    <string name="ctl_brake">Brake / reverse</string>
+    <string name="ctl_handbrake">Handbrake (drift)</string>
+    <string name="ctl_camera">Switch camera</string>
+    <string name="ctl_reset">Back to the road</string>
+    <string name="ctl_look">Look around</string>
+    <string name="ctl_lights">Headlights</string>
+    <string name="ctl_pause">Pause</string>
+    <string name="loading">Building the city…</string>
+    <string name="on_overpass">OVERPASS</string>
+    <string name="paused">Paused</string>
+    <string name="resume">Resume (A / START)</string>
+    <string name="to_title">Back to title (X)</string>
+    <string name="pause_hint">The drive continues where you left it.</string>
+    <string name="error_title">Could not start</string>
+    <string name="unsupported">This device does not support Vulkan 1.1, which the game needs.</string>
+</resources>

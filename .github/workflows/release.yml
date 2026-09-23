@@ -1,4 +1,4 @@
-# タグ v* の push で：Linux版単体テスト → APK/Linux版ビルド → 署名 → Release作成
+# タグ v* の push で：Linux版単体テスト → APK（ベンチ・ドライブ）/Linux版ビルド → 署名 → Release作成
 #
 # 必要な Secrets（リポジトリの Settings → Secrets and variables → Actions）:
 #   BENCHDECK_KEYSTORE_B64     リリース用 keystore を base64 にしたもの（keystore はリポジトリに入れない）
@@ -91,6 +91,7 @@ jobs:
         run: |
           ./gradlew --no-daemon assembleRelease \
             -Pbenchdeck.versionName=${{ steps.v.outputs.name }} -Pbenchdeck.versionCode=${{ steps.v.outputs.code }} \
+            -Pdrive.versionName=${{ steps.v.outputs.name }} -Pdrive.versionCode=${{ steps.v.outputs.code }} \
             -Pbenchdeck.debugSigned=${{ steps.sign.outputs.kind == 'debug' }}
 
       - name: Sign APK (apksigner, APK Signature Scheme v2+)
@@ -103,23 +104,29 @@ jobs:
         run: |
           echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
           BT=$ANDROID_HOME/build-tools/36.0.0
-          IN=$(ls android/app/build/outputs/apk/release/*-unsigned.apk)
-          OUT=dist/benchdeck-${{ steps.v.outputs.name }}-arm64.apk
-          $BT/zipalign -P 16 -f 4 "$IN" "$RUNNER_TEMP/aligned.apk"
-          $BT/apksigner sign --ks "$RUNNER_TEMP/release.keystore" --ks-pass env:KEYSTORE_PASS \
-            --ks-key-alias "$KEY_ALIAS" --key-pass env:KEY_PASS \
-            --v1-signing-enabled false --v2-signing-enabled true --v3-signing-enabled true \
-            --out "$OUT" "$RUNNER_TEMP/aligned.apk"
+          # ベンチ（app）とドライブ（drive）を同じ鍵で署名
+          for pair in app:benchdeck drive:citydrive; do
+            MOD=${pair%%:*}; NAME=${pair##*:}
+            IN=$(ls android/$MOD/build/outputs/apk/release/*-unsigned.apk)
+            OUT=dist/$NAME-${{ steps.v.outputs.name }}-arm64.apk
+            $BT/zipalign -P 16 -f 4 "$IN" "$RUNNER_TEMP/aligned.apk"
+            $BT/apksigner sign --ks "$RUNNER_TEMP/release.keystore" --ks-pass env:KEYSTORE_PASS \
+              --ks-key-alias "$KEY_ALIAS" --key-pass env:KEY_PASS \
+              --v1-signing-enabled false --v2-signing-enabled true --v3-signing-enabled true \
+              --out "$OUT" "$RUNNER_TEMP/aligned.apk"
+          done
           rm -f "$RUNNER_TEMP/release.keystore"
 
       - name: Collect debug-key APK
         if: steps.sign.outputs.kind == 'debug'
-        run: cp android/app/build/outputs/apk/release/app-release.apk dist/benchdeck-${{ steps.v.outputs.name }}-arm64-debugkey.apk
+        run: |
+          cp android/app/build/outputs/apk/release/app-release.apk dist/benchdeck-${{ steps.v.outputs.name }}-arm64-debugkey.apk
+          cp android/drive/build/outputs/apk/release/drive-release.apk dist/citydrive-${{ steps.v.outputs.name }}-arm64-debugkey.apk
 
       - name: Verify APK (signature, 16 KB alignment)
         run: |
           BT=$ANDROID_HOME/build-tools/36.0.0
-          for f in dist/benchdeck-*.apk; do
+          for f in dist/*.apk; do
             $BT/apksigner verify --verbose "$f" | grep -E "^Verified using v2|^Verified using v3"
             $BT/zipalign -c -P 16 4 "$f"
           done
@@ -127,8 +134,8 @@ jobs:
       - name: Checksums and notes
         run: |
           cd dist
-          sha256sum benchdeck-*.apk benchdeck-*.tar.gz > SHA256SUMS.txt
-          for f in benchdeck-*.apk benchdeck-*.tar.gz; do sha256sum "$f" | cut -d' ' -f1 > "$f.sha256"; done
+          sha256sum *.apk benchdeck-*.tar.gz > SHA256SUMS.txt
+          for f in *.apk benchdeck-*.tar.gz; do sha256sum "$f" | cut -d' ' -f1 > "$f.sha256"; done
           cd ..
           python3 tools/release_notes.py "${RELEASE_TAG}" --signing ${{ steps.sign.outputs.kind }} > dist/NOTES.md
 
@@ -142,6 +149,7 @@ jobs:
           prerelease: ${{ startsWith(env.RELEASE_TAG, 'v0.') || steps.sign.outputs.kind == 'debug' }}
           files: |
             dist/benchdeck-*.apk
+            dist/citydrive-*.apk
             dist/benchdeck-*.tar.gz
             dist/*.sha256
             dist/SHA256SUMS.txt

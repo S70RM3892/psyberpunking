@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 夜の道：遠近の路肩（マゼンタとシアン）とセンターライン（アンバー） -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:strokeColor="#FF2E97" android:strokeWidth="4" android:strokeLineCap="round"
+        android:pathData="M30,82 L50,40" />
+    <path android:strokeColor="#22E4FF" android:strokeWidth="4" android:strokeLineCap="round"
+        android:pathData="M78,82 L58,40" />
+    <path android:strokeColor="#FFB02E" android:strokeWidth="3" android:strokeLineCap="round"
+        android:pathData="M54,80 L54,70 M54,62 L54,55 M54,49 L54,45" />
+    <path android:fillColor="#22E4FF" android:pathData="M44,36 h20 v3 h-20 z" />
+</vector>

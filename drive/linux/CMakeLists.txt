@@ -8,3 +8,6 @@ target_compile_options(citydrive PRIVATE ${BENCH_CXX_FLAGS})
 target_compile_definitions(citydrive PRIVATE BENCH_SOURCE_DIR="${BENCH_ROOT}")
 add_dependencies(citydrive bench_materials bench_scene_data)
 set_target_properties(citydrive PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# 配布：ベンチの Linux 版と同じ tar に入れる（data/ は共有）
+install(TARGETS citydrive DESTINATION .)
