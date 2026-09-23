@@ -68,18 +68,28 @@ jobs:
           cmake --install build --prefix "dist/$DEST"
           tar -C dist -czf "dist/$DEST.tar.gz" "$DEST"
 
-      - name: APK (unsigned release)
+      # 署名鍵の Secrets があれば正式な鍵で署名、無ければ Android SDK の debug 鍵で署名したリリース版を出す
+      - name: Signing mode
+        id: sign
+        env:
+          HAS_KEY: ${{ secrets.BENCHDECK_KEYSTORE_B64 != '' }}
+        run: echo "kind=$([ "$HAS_KEY" = true ] && echo release || echo debug)" >> "$GITHUB_OUTPUT"
+
+      - name: APK
         working-directory: android
-        run: ./gradlew --no-daemon assembleRelease -Pbenchdeck.versionName=${{ steps.v.outputs.name }} -Pbenchdeck.versionCode=${{ steps.v.outputs.code }}
+        run: |
+          ./gradlew --no-daemon assembleRelease \
+            -Pbenchdeck.versionName=${{ steps.v.outputs.name }} -Pbenchdeck.versionCode=${{ steps.v.outputs.code }} \
+            -Pbenchdeck.debugSigned=${{ steps.sign.outputs.kind == 'debug' }}
 
       - name: Sign APK (apksigner, APK Signature Scheme v2+)
+        if: steps.sign.outputs.kind == 'release'
         env:
           KEYSTORE_B64: ${{ secrets.BENCHDECK_KEYSTORE_B64 }}
           KEYSTORE_PASS: ${{ secrets.BENCHDECK_KEYSTORE_PASS }}
           KEY_ALIAS: ${{ secrets.BENCHDECK_KEY_ALIAS }}
           KEY_PASS: ${{ secrets.BENCHDECK_KEY_PASS }}
         run: |
-          test -n "$KEYSTORE_B64" || { echo "BENCHDECK_KEYSTORE_B64 is not set"; exit 1; }
           echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
           BT=$ANDROID_HOME/build-tools/36.0.0
           IN=$(ls android/app/build/outputs/apk/release/*-unsigned.apk)
@@ -89,8 +99,19 @@ jobs:
             --ks-key-alias "$KEY_ALIAS" --key-pass env:KEY_PASS \
             --v1-signing-enabled false --v2-signing-enabled true --v3-signing-enabled true \
             --out "$OUT" "$RUNNER_TEMP/aligned.apk"
-          $BT/apksigner verify --verbose "$OUT" | head -5
           rm -f "$RUNNER_TEMP/release.keystore"
+
+      - name: Collect debug-key APK
+        if: steps.sign.outputs.kind == 'debug'
+        run: cp android/app/build/outputs/apk/release/app-release.apk dist/benchdeck-${{ steps.v.outputs.name }}-arm64-debugkey.apk
+
+      - name: Verify APK (signature, 16 KB alignment)
+        run: |
+          BT=$ANDROID_HOME/build-tools/36.0.0
+          for f in dist/benchdeck-*.apk; do
+            $BT/apksigner verify --verbose "$f" | grep -E "^Verified using v2|^Verified using v3"
+            $BT/zipalign -c -P 16 4 "$f"
+          done
 
       - name: Checksums and notes
         run: |
@@ -98,11 +119,13 @@ jobs:
           sha256sum benchdeck-*.apk benchdeck-*.tar.gz > SHA256SUMS.txt
           for f in benchdeck-*.apk benchdeck-*.tar.gz; do sha256sum "$f" | cut -d' ' -f1 > "$f.sha256"; done
           cd ..
-          python3 tools/release_notes.py "${GITHUB_REF_NAME}" > dist/NOTES.md
+          python3 tools/release_notes.py "${GITHUB_REF_NAME}" --signing ${{ steps.sign.outputs.kind }} > dist/NOTES.md
 
       - uses: softprops/action-gh-release@v2
         with:
           body_path: dist/NOTES.md
+          # キャリブレーション前（v0.x）と debug 鍵の版はプレリリース扱い
+          prerelease: ${{ startsWith(github.ref_name, 'v0.') || steps.sign.outputs.kind == 'debug' }}
           files: |
             dist/benchdeck-*.apk
             dist/benchdeck-*.tar.gz

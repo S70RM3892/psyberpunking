@@ -41,8 +41,12 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
-            // 署名は CI で apksigner（APK Signature Scheme v2 以上）。ここでは未署名で出す
-            signingConfig = null
+            // 署名は CI で apksigner（APK Signature Scheme v2 以上）。ここでは未署名で出す。
+            // 正式な鍵がまだ無い間は -Pbenchdeck.debugSigned=true で Android SDK の debug 鍵で署名する
+            // （最適化・非 debuggable のリリース版のまま。正式な鍵の版へは上書き更新できない）
+            signingConfig =
+                if (providers.gradleProperty("benchdeck.debugSigned").orNull == "true") signingConfigs.getByName("debug")
+                else null
         }
         debug {
             externalNativeBuild { cmake { arguments += "-DCMAKE_BUILD_TYPE=Release" } }
