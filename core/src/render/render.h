@@ -107,7 +107,6 @@ public:
 
 private:
     MaterialInstance* mi_ = nullptr;
-    VertexBuffer* vb_ = nullptr;
     std::vector<VertexBuffer*> sliceVbs_;
     IndexBuffer* ib_ = nullptr;
     std::vector<utils::Entity> slices_;

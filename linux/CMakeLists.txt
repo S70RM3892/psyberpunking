@@ -2,6 +2,8 @@ find_package(SDL2 REQUIRED)
 
 add_executable(benchdeck main.cpp)
 target_link_libraries(benchdeck PRIVATE bench_core SDL2::SDL2)
+# 配布先（SteamOS など）に libc++ が無くても動くよう、C++ ランタイムは静的にリンクする
+target_link_options(benchdeck PRIVATE -static-libstdc++ -static-libgcc)
 target_compile_options(benchdeck PRIVATE ${BENCH_CXX_FLAGS})
 target_compile_definitions(benchdeck PRIVATE
     BENCH_APP_VERSION="${PROJECT_VERSION}"

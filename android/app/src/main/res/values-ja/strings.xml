@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tagline">Steam Deck 級 GPU ベンチマーク</string>
+
+    <string name="device">端末</string>
+    <string name="gpu">GPU</string>
+    <string name="vulkan">Vulkan</string>
+    <string name="refresh">画面</string>
+    <string name="refresh_hz">%1$.0f Hz</string>
+    <string name="preset">プリセット</string>
+    <string name="preset_low">Low</string>
+    <string name="preset_deck">Deck</string>
+    <string name="preset_medium">Medium</string>
+    <string name="preset_high">High</string>
+    <string name="preset_note_deck">スコアは Deck プリセットのときだけ出ます（Steam Deck = 1000）。</string>
+    <string name="preset_note_other">他のプリセットは fps のみです。</string>
+    <string name="start">計測開始</string>
+    <string name="duration_note">約4分：ウォームアップ1周 ＋ 60秒×3周を計測します。</string>
+    <string name="history">過去の結果</string>
+    <string name="history_empty">まだ結果はありません。</string>
+
+    <string name="cooling">冷却待ち</string>
+    <string name="cooling_detail">サーマルヘッドルームが 0.5 未満になるまで待っています（現在 %1$.2f）</string>
+    <string name="cooling_unsupported">この端末はサーマルヘッドルームを返さないため、そのまま始めます。</string>
+    <string name="loading">読込中</string>
+    <string name="warmup">ウォームアップ</string>
+    <string name="lap">%1$d/3 周目</string>
+    <string name="cancel">キャンセル</string>
+    <string name="abort_title">計測を中断しますか？</string>
+    <string name="abort_text">この計測は破棄されます。</string>
+    <string name="abort_yes">中断する</string>
+    <string name="abort_no">続ける</string>
+
+    <string name="result">結果</string>
+    <string name="score">スコア</string>
+    <string name="score_none">スコアなし</string>
+    <string name="avg_fps">平均</string>
+    <string name="low1_fps">1% low</string>
+    <string name="gpu_ms">GPU</string>
+    <string name="cpu_ms">CPU</string>
+    <string name="thermal_max">最高サーマル状態</string>
+    <string name="valid_laps">有効な周回</string>
+    <string name="sections">区間別</string>
+    <string name="section_boulevard">大通り</string>
+    <string name="section_overpass">高架</string>
+    <string name="section_alley">路地</string>
+    <string name="share_json">JSONを共有</string>
+    <string name="share_csv">CSVを共有</string>
+    <string name="rerun">再計測</string>
+    <string name="home">ホーム</string>
+
+    <string name="interrupted">中断</string>
+    <string name="interrupted_text">計測を中断しました（%1$s）。途中の周回は記録していません。</string>
+    <string name="thermal_stop">サーマル停止：端末が高温（SEVERE以上）になりました。</string>
+    <string name="unsupported">この端末は Vulkan 1.1 に対応していません。</string>
+    <string name="error">エラー</string>
+</resources>

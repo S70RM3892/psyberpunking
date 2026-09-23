@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">BenchDeck</string>
+    <string name="tagline">Steam Deck–class GPU benchmark</string>
+
+    <string name="device">Device</string>
+    <string name="gpu">GPU</string>
+    <string name="vulkan">Vulkan</string>
+    <string name="refresh">Display</string>
+    <string name="refresh_hz">%1$.0f Hz</string>
+    <string name="preset">Preset</string>
+    <string name="preset_low">Low</string>
+    <string name="preset_deck">Deck</string>
+    <string name="preset_medium">Medium</string>
+    <string name="preset_high">High</string>
+    <string name="preset_note_deck">Scores are only given for the Deck preset (Steam Deck = 1000).</string>
+    <string name="preset_note_other">Other presets report fps only.</string>
+    <string name="start">Start benchmark</string>
+    <string name="duration_note">About 4 minutes: 1 warm-up lap + 3 measured laps of 60 s.</string>
+    <string name="history">Past results</string>
+    <string name="history_empty">No results yet.</string>
+
+    <string name="cooling">Cooling down</string>
+    <string name="cooling_detail">Waiting for thermal headroom below 0.5 (now %1$.2f)</string>
+    <string name="cooling_unsupported">Thermal headroom is not reported by this device; starting.</string>
+    <string name="loading">Loading</string>
+    <string name="warmup">Warm-up</string>
+    <string name="lap">Lap %1$d/3</string>
+    <string name="cancel">Cancel</string>
+    <string name="abort_title">Stop the benchmark?</string>
+    <string name="abort_text">This run will be discarded.</string>
+    <string name="abort_yes">Stop</string>
+    <string name="abort_no">Continue</string>
+
+    <string name="result">Result</string>
+    <string name="score">Score</string>
+    <string name="score_none">No score</string>
+    <string name="avg_fps">Average</string>
+    <string name="low1_fps">1% low</string>
+    <string name="gpu_ms">GPU</string>
+    <string name="cpu_ms">CPU</string>
+    <string name="thermal_max">Max thermal state</string>
+    <string name="valid_laps">Valid laps</string>
+    <string name="sections">Sections</string>
+    <string name="section_boulevard">Boulevard</string>
+    <string name="section_overpass">Overpass</string>
+    <string name="section_alley">Alley</string>
+    <string name="share_json">Share JSON</string>
+    <string name="share_csv">Share CSV</string>
+    <string name="rerun">Run again</string>
+    <string name="home">Home</string>
+
+    <string name="interrupted">Interrupted</string>
+    <string name="interrupted_text">The benchmark was stopped (%1$s). Nothing was recorded for the unfinished lap.</string>
+    <string name="thermal_stop">Thermal stop: the device reached a severe thermal state.</string>
+    <string name="unsupported">This device does not support Vulkan 1.1.</string>
+    <string name="error">Error</string>
+</resources>
