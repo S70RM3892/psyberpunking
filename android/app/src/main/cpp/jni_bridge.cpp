@@ -46,13 +46,20 @@ JNIEXPORT void JNICALL Java_dev_zat_benchdeck_NativeBench_nativeSetSurface(JNIEn
 
 JNIEXPORT void JNICALL Java_dev_zat_benchdeck_NativeBench_nativeStart(JNIEnv* env, jclass, jlong h, jstring preset, jint laps,
                                                                       jboolean warmup, jdouble lapSeconds, jobjectArray device) {
-    // device = [端末名, OS, リフレッシュレート]。GPU名・ドライバ・Vulkan版はネイティブで調べる
+    // device = [端末名, OS, リフレッシュレート, 冷却待ちの理由, 開始時ヘッドルーム, 目標ヘッドルーム, 待ち秒数]。
+    // GPU名・ドライバ・Vulkan版はネイティブで調べる
     bench::DeviceInfo d;
     d.host = "android";
     auto at = [&](int i) { return str(env, static_cast<jstring>(env->GetObjectArrayElement(device, i))); };
     d.device = at(0);
     d.os = at(1);
     d.refreshHz = std::atof(at(2).c_str());
+    if (env->GetArrayLength(device) >= 7) {
+        d.cooling.reason = at(3);
+        d.cooling.startHeadroom = std::atof(at(4).c_str());
+        d.cooling.target = std::atof(at(5).c_str());
+        d.cooling.waitSeconds = std::atof(at(6).c_str());
+    }
     bench::VulkanInfo vk = bench::queryVulkanInfo();
     d.gpu = vk.deviceName;
     d.driver = vk.driverVersion;

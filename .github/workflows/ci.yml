@@ -101,9 +101,9 @@ jobs:
       - name: Fetch Filament (linux tools + android libs)
         run: tools/fetch_filament.sh
 
-      - name: Build debug APK
+      - name: Build debug APK and run JVM unit tests
         working-directory: android
-        run: ./gradlew --no-daemon assembleDebug
+        run: ./gradlew --no-daemon assembleDebug testDebugUnitTest
 
       - name: Check 16 KB alignment
         run: |

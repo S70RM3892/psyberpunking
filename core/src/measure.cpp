@@ -275,6 +275,12 @@ std::string resultToJson(const RunResult& r, bool includeFrames) {
     j["device"] = {{"name", r.device.device}, {"gpu", r.device.gpu}, {"driver", r.device.driver},
                    {"vulkan", r.device.vulkanVersion}, {"os", r.device.os}, {"refresh_hz", round2(r.device.refreshHz)},
                    {"host", r.device.host}};
+    if (!r.device.cooling.reason.empty()) {
+        const CoolingInfo& c = r.device.cooling;
+        auto orNull = [](double v) { return v < 0 ? json(nullptr) : json(round2(v)); };
+        j["cooling"] = {{"reason", c.reason}, {"start_headroom", orNull(c.startHeadroom)},
+                        {"target", orNull(c.target)}, {"wait_s", std::lround(c.waitSeconds)}};
+    }
     j["timing_method"] = r.method == TimingMethod::Gpu ? "gpu_frame_duration" : "cpu_and_display_interval";
     // GPU時間が取れたフレームの割合。GPU方式でも欠けたフレームは max(CPU, 表示間隔) で埋めている
     j["gpu_coverage"] = round2(r.gpuCoverage);

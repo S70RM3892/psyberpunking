@@ -2,6 +2,8 @@ package dev.zat.benchdeck
 
 import android.app.Application
 import android.os.Build
+import android.os.PowerManager
+import android.os.SystemClock
 import android.view.Surface
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -15,7 +17,8 @@ import kotlinx.coroutines.launch
 /** 画面の状態遷移：起動チェック → ホーム → 冷却待ち → 読込 → ウォームアップ → 計測 → 結果（途中離脱は中断） */
 sealed interface Screen {
     data object Home : Screen
-    data class Cooling(val headroom: Float) : Screen
+    /** 冷却待ち。target は LIGHT しきい値からの目標（無い端末は null）、drop は直近60秒の低下量 */
+    data class Cooling(val headroom: Float, val target: Float?, val drop: Float?, val elapsedS: Int, val hot: Boolean) : Screen
     data class Running(val state: NativeBench.State) : Screen
     data class Result(val summary: ResultSummary) : Screen
     data class Interrupted(val reason: String) : Screen
@@ -76,21 +79,47 @@ class BenchViewModel(app: Application) : AndroidViewModel(app) {
     /** 結果が保存されたら呼ばれる（自動試験で logcat に出してアプリを閉じる） */
     var onFinished: ((java.io.File?) -> Unit)? = null
 
-    /** 計測開始：冷却待ち（ヘッドルーム 0.5 未満）→ ネイティブへ開始を指示 → 状態を 100ms ごとに見る */
+    @Volatile private var skipCoolingRequested = false
+
+    /** 冷却待ちを打ち切って今すぐ始める（結果 JSON の cooling.reason は "user_skip"） */
+    fun skipCooling() {
+        skipCoolingRequested = true
+    }
+
+    /** 計測開始：冷却待ち（判定は [CoolingPolicy]）→ ネイティブへ開始を指示 → 状態を 100ms ごとに見る */
     fun start() {
         if (runJob?.isActive == true) return
+        skipCoolingRequested = false
         runJob = viewModelScope.launch {
             // ---- 冷却待ち ----
-            while (isActive && !runOptions.skipCooling) {
+            val startMs = SystemClock.elapsedRealtime()
+            val target = CoolingPolicy.targetFrom(thermal.lightThreshold)
+            var cooling: CoolingPolicy.Decision.Start
+            while (true) {
+                val now = SystemClock.elapsedRealtime()
                 val h = thermal.headroom.value
-                if (h.isNaN() || h < 0.5f) break
-                _screen.value = Screen.Cooling(h)
+                if (runOptions.skipCooling) { cooling = CoolingPolicy.Decision.Start("skipped", h, target); break }
+                if (skipCoolingRequested) { cooling = CoolingPolicy.Decision.Start("user_skip", h, target); break }
+                // 待ち始める前の記録も使う（しばらく放置されていた端末なら、すぐ「下がり止まり」と判定できる）
+                val samples = thermal.samplesSince(startMs - 2 * CoolingPolicy.PLATEAU_WINDOW_MS)
+                val status = thermal.status.value
+                when (val d = CoolingPolicy.decide(status, samples, target, startMs, now)) {
+                    is CoolingPolicy.Decision.Start -> { cooling = d; break }
+                    is CoolingPolicy.Decision.Wait -> _screen.value = Screen.Cooling(
+                        d.headroom, d.target, d.drop, ((now - startMs) / 1000).toInt(),
+                        hot = status >= PowerManager.THERMAL_STATUS_MODERATE)
+                }
                 delay(1000)
+                if (!isActive) return@launch
             }
             val d = _device.value
             val os = "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})"
             val o = runOptions
-            NativeBench.nativeStart(handle, _preset.value, o.laps, o.warmup, o.lapSeconds, arrayOf(d.name, os, d.refreshHz.toString()))
+            val waitS = (SystemClock.elapsedRealtime() - startMs) / 1000.0
+            fun num(v: Float?) = if (v == null || v.isNaN()) "-1" else v.toString()
+            NativeBench.nativeStart(handle, _preset.value, o.laps, o.warmup, o.lapSeconds, arrayOf(
+                d.name, os, d.refreshHz.toString(),
+                cooling.reason, num(cooling.headroom), num(cooling.target), waitS.toString()))
             _screen.value = Screen.Running(NativeBench.State(NativeBench.Phase.LOADING, 0f, 0, 0, 0f))
             // ---- 計測中 ----
             while (isActive) {

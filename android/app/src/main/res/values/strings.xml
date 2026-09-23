@@ -21,7 +21,14 @@
     <string name="history_empty">No results yet.</string>
 
     <string name="cooling">Cooling down</string>
-    <string name="cooling_detail">Waiting for thermal headroom below 0.5 (now %1$.2f)</string>
+    <string name="cooling_headroom_label">Thermal headroom (1.0 = heavy throttling)</string>
+    <string name="cooling_hot">The device is throttling (MODERATE or worse). Waiting for it to cool.</string>
+    <string name="cooling_target">Starting below %1$.2f (this device\'s light-throttling threshold minus 0.05)</string>
+    <string name="cooling_plateau_wait">Starting once the headroom stops falling (watching the last 60 s)</string>
+    <string name="cooling_plateau_drop">Still cooling: fell %1$.3f in the last 60 s. Starting when it drops less than %2$.2f.</string>
+    <string name="cooling_elapsed">%1$d:%2$02d elapsed (starts anyway after %3$d min)</string>
+    <string name="cooling_skip">Start now</string>
+    <string name="cooling_skip_note">Starting early is recorded in the result, so warm runs can be told apart.</string>
     <string name="cooling_unsupported">Thermal headroom is not reported by this device; starting.</string>
     <string name="loading">Loading</string>
     <string name="warmup">Warm-up</string>

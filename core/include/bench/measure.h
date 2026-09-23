@@ -54,6 +54,14 @@ struct LapResult {
     std::vector<Stats> sections;
 };
 
+// 計測前の冷却待ちの結果（Android のみ。Linux 版は reason が空で、JSON にも出さない）
+struct CoolingInfo {
+    std::string reason;          // 開始した理由："below_light_threshold" / "plateau" / "timeout" / "user_skip" / "unsupported" / "skipped"
+    double startHeadroom = -1;   // 開始時のサーマルヘッドルーム（取れない端末は -1）
+    double target = -1;          // 目標にしたヘッドルーム（LIGHT のしきい値 − 余裕。しきい値が無い端末は -1）
+    double waitSeconds = 0;      // 冷却待ちにかかった秒数
+};
+
 struct DeviceInfo {
     std::string device;       // 端末名
     std::string gpu;          // GPU名
@@ -62,6 +70,7 @@ struct DeviceInfo {
     std::string os;
     double refreshHz = 0;
     std::string host;         // "android" / "linux"
+    CoolingInfo cooling;
 };
 
 struct RunResult {

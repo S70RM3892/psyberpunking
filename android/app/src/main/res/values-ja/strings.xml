@@ -20,7 +20,14 @@
     <string name="history_empty">まだ結果はありません。</string>
 
     <string name="cooling">冷却待ち</string>
-    <string name="cooling_detail">サーマルヘッドルームが 0.5 未満になるまで待っています（現在 %1$.2f）</string>
+    <string name="cooling_headroom_label">サーマルヘッドルーム（1.0 で重いスロットリング）</string>
+    <string name="cooling_hot">端末が熱で性能を制限中（MODERATE 以上）。冷えるまで待っています。</string>
+    <string name="cooling_target">%1$.2f 未満になったら開始（この端末の「軽い制限」のしきい値 − 0.05）</string>
+    <string name="cooling_plateau_wait">ヘッドルームが下がり止まったら開始（直近60秒を見ています）</string>
+    <string name="cooling_plateau_drop">冷却中：直近60秒で %1$.3f 下がりました。低下が %2$.2f 未満になったら開始します。</string>
+    <string name="cooling_elapsed">%1$d:%2$02d 経過（%3$d 分で打ち切って開始）</string>
+    <string name="cooling_skip">今すぐ開始</string>
+    <string name="cooling_skip_note">早めに始めた計測は結果に記録されるので、温まった状態の計測と区別できます。</string>
     <string name="cooling_unsupported">この端末はサーマルヘッドルームを返さないため、そのまま始めます。</string>
     <string name="loading">読込中</string>
     <string name="warmup">ウォームアップ</string>

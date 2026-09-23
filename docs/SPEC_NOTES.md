@@ -109,7 +109,7 @@ onTrimMemory、サーマル SEVERE、アセット読込失敗、通知・着信�
 
 | 仕様 | 実装 |
 | --- | --- |
-| 冷却待ち：`getThermalHeadroom()` が 0.5 未満になるまで | そのとおり（1秒ごと） |
+| 冷却待ち：`getThermalHeadroom()` が 0.5 未満になるまで | **変更**。ヘッドルームの 0.0 は「1.0（SEVERE）から一定の距離」で室温ではないため（AOSP `PowerManager#getThermalHeadroom` の説明）、端末によっては放置しても 0.5 を下回らず永遠に始まらない。`CoolingPolicy` で「LIGHT のしきい値 − 0.05 未満（Android 15+ でしきい値がある端末）／しきい値が無ければ 0.5 未満か、60 秒の低下が 0.02 未満（下がり止まり）」で開始、MODERATE 以上は待つ、最大 10 分、手動スキップ可。取得は 10 秒ごと（ADPF の推奨間隔）。開始理由は結果 JSON の `cooling` |
 | ウォームアップ：全バリアント事前生成＋1周（計測外） | 読込中に3地点を描いてシェーダを作らせたうえで、1周を計測外で走らせる |
 | 本計測3周、GPU時間 = `gpuFrameDuration`、CPU時間 = FrameInfo の beginFrame〜endFrame、表示間隔 = Choreographer、サーマル | そのとおり。結果 JSON の `frames` に全フレーム |
 | スコアは GPU 時間と CPU 時間の大きい方から | そのとおり |

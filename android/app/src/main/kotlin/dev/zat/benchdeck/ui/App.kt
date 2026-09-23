@@ -66,6 +66,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.FileProvider
 import dev.zat.benchdeck.BenchViewModel
+import dev.zat.benchdeck.CoolingPolicy
 import dev.zat.benchdeck.NativeBench
 import dev.zat.benchdeck.R
 import dev.zat.benchdeck.ResultSummary
@@ -87,7 +88,7 @@ fun BenchDeckApp(vm: BenchViewModel) {
             ) { s ->
                 when (s) {
                     is Screen.Home -> HomeScreen(vm)
-                    is Screen.Cooling -> CoolingScreen(s.headroom) { vm.abort("cancel") }
+                    is Screen.Cooling -> CoolingScreen(s, onSkip = vm::skipCooling) { vm.abort("cancel") }
                     is Screen.Running -> RunScreen(vm)
                     is Screen.Result -> ResultScreen(vm, s.summary)
                     is Screen.Interrupted -> MessageScreen(
@@ -189,15 +190,48 @@ private fun HistoryItem(r: ResultSummary, onClick: () -> Unit) {
 // ---- 冷却待ち -------------------------------------------------------------------------------------
 
 @Composable
-private fun CoolingScreen(headroom: Float, onCancel: () -> Unit) {
+private fun CoolingScreen(c: Screen.Cooling, onSkip: () -> Unit, onCancel: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(48.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
         Text(stringResource(R.string.cooling), style = MaterialTheme.typography.headlineMedium)
-        Spacer(Modifier.height(12.dp))
-        Text(stringResource(R.string.cooling_detail, headroom), color = Muted)
+        Spacer(Modifier.height(16.dp))
+        // 大きく今の値。1.0 で重いスロットリング
+        Text(
+            if (c.headroom.isNaN()) "—" else "%.2f".format(c.headroom),
+            style = MaterialTheme.typography.displayMedium,
+            color = if (c.hot) Magenta else Cyan,
+        )
+        Text(stringResource(R.string.cooling_headroom_label), style = MaterialTheme.typography.labelMedium, color = Muted)
         Spacer(Modifier.height(20.dp))
-        LinearProgressIndicator(progress = { (1f - (headroom - 0.5f).coerceIn(0f, 0.5f) * 2f) }, modifier = Modifier.width(360.dp), color = Cyan)
-        Spacer(Modifier.height(24.dp))
-        OutlinedButton(onClick = onCancel) { Text(stringResource(R.string.cancel)) }
+        // 何を待っているか
+        val detail = when {
+            c.hot -> stringResource(R.string.cooling_hot)
+            c.target != null -> stringResource(R.string.cooling_target, c.target)
+            c.drop != null -> stringResource(R.string.cooling_plateau_drop, c.drop, CoolingPolicy.PLATEAU_DROP)
+            else -> stringResource(R.string.cooling_plateau_wait)
+        }
+        Text(detail, color = Muted)
+        Spacer(Modifier.height(20.dp))
+        // 打ち切りまでの経過（最大10分）
+        val limitS = (CoolingPolicy.TIMEOUT_MS / 1000).toInt()
+        LinearProgressIndicator(
+            progress = { (c.elapsedS.toFloat() / limitS).coerceIn(0f, 1f) },
+            modifier = Modifier.width(360.dp),
+            color = if (c.hot) Magenta else Cyan,
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            stringResource(R.string.cooling_elapsed, c.elapsedS / 60, c.elapsedS % 60, limitS / 60),
+            style = MaterialTheme.typography.labelMedium, color = Muted,
+        )
+        Spacer(Modifier.height(28.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            OutlinedButton(onClick = onCancel) { Text(stringResource(R.string.cancel)) }
+            Button(onClick = onSkip, colors = ButtonDefaults.buttonColors(containerColor = Cyan, contentColor = Bg)) {
+                Text(stringResource(R.string.cooling_skip))
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        Text(stringResource(R.string.cooling_skip_note), style = MaterialTheme.typography.labelSmall, color = Muted)
     }
 }
 

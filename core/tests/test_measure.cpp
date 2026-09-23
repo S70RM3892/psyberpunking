@@ -139,6 +139,18 @@ TEST(Output, JsonHasSummary) {
     EXPECT_NE(js.find("\"summary\""), std::string::npos);
 }
 
+TEST(Output, JsonCoolingOnlyWhenRecorded) {
+    RunResult r;
+    r.preset = "deck";
+    EXPECT_EQ(resultToJson(r, false).find("\"cooling\""), std::string::npos);  // Linux 版は出さない
+    r.device.cooling = {"plateau", 0.634, -1, 72.4};
+    std::string js = resultToJson(r, false);
+    EXPECT_NE(js.find("\"reason\": \"plateau\""), std::string::npos);
+    EXPECT_NE(js.find("\"start_headroom\": 0.63"), std::string::npos);
+    EXPECT_NE(js.find("\"target\": null"), std::string::npos);
+    EXPECT_NE(js.find("\"wait_s\": 72"), std::string::npos);
+}
+
 TEST(Session, DrainWaitsForLateGpuTimes) {
     // GPU時間が3フレーム遅れて届く場合でも、周回終了後の回収待ちで全フレームが埋まる
     SceneConfig cfg = loadScene();
