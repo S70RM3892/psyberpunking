@@ -10,6 +10,16 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  # タグを push できない環境向け：Actions から版を指定して実行すると、実行したコミットにタグを打って Release を作る
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "版（例 v0.1.0）"
+        required: true
+        type: string
+
+env:
+  RELEASE_TAG: ${{ inputs.version || github.ref_name }}
 
 permissions:
   contents: write
@@ -31,7 +41,8 @@ jobs:
       - name: Version
         id: v
         run: |
-          echo "name=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+.*$ ]] || { echo "bad version: $RELEASE_TAG"; exit 1; }
+          echo "name=${RELEASE_TAG#v}" >> "$GITHUB_OUTPUT"
           echo "code=${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
 
       - name: Install toolchain
@@ -119,13 +130,16 @@ jobs:
           sha256sum benchdeck-*.apk benchdeck-*.tar.gz > SHA256SUMS.txt
           for f in benchdeck-*.apk benchdeck-*.tar.gz; do sha256sum "$f" | cut -d' ' -f1 > "$f.sha256"; done
           cd ..
-          python3 tools/release_notes.py "${GITHUB_REF_NAME}" --signing ${{ steps.sign.outputs.kind }} > dist/NOTES.md
+          python3 tools/release_notes.py "${RELEASE_TAG}" --signing ${{ steps.sign.outputs.kind }} > dist/NOTES.md
 
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          target_commitish: ${{ github.sha }}
+          name: BenchDeck ${{ env.RELEASE_TAG }}
           body_path: dist/NOTES.md
           # キャリブレーション前（v0.x）と debug 鍵の版はプレリリース扱い
-          prerelease: ${{ startsWith(github.ref_name, 'v0.') || steps.sign.outputs.kind == 'debug' }}
+          prerelease: ${{ startsWith(env.RELEASE_TAG, 'v0.') || steps.sign.outputs.kind == 'debug' }}
           files: |
             dist/benchdeck-*.apk
             dist/benchdeck-*.tar.gz
