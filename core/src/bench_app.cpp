@@ -1,9 +1,11 @@
 #include "bench/bench_app.h"
 
 #include <chrono>
+#include <deque>
 
 #include <filament/Camera.h>
 #include <filament/Engine.h>
+#include <filament/Fence.h>
 #include <filament/Renderer.h>
 #include <filament/Scene.h>
 #include <filament/SwapChain.h>
@@ -40,6 +42,17 @@ struct BenchApp::Impl {
 
     std::vector<uint8_t> pixels;
 
+    // Filament は「1つ前のフレームのGPU処理が終わっていなければ beginFrame が false（フレームを捨てる）」。
+    // 計測ループは表示同期で待たないので、そのままだと beginFrame を空回りして CPU を燃やす。
+    // そこで beginFrame の直前に、前フレームのフェンスを待つ（次フレームのシーン更新は前フレームのGPU処理と並行）
+    std::deque<Fence*> inFlight;
+    void markSubmitted() { inFlight.push_back(engine->createFence()); }
+    void waitPrevious() { drainFences(); }
+    void drainFences() {
+        for (Fence* f : inFlight) Fence::waitAndDestroy(f);
+        inFlight.clear();
+    }
+
     // 描画統計の平均（結果JSON用）
     double triSum = 0, drawSum = 0;
     int statFrames = 0;
@@ -51,6 +64,7 @@ BenchApp::BenchApp(Platform& platform) : platform_(platform), impl_(std::make_un
 BenchApp::~BenchApp() {
     Impl& s = *impl_;
     if (!s.engine) return;
+    s.drainFences();
     s.world.destroy(*s.engine);
     if (s.view) s.engine->destroy(s.view);
     if (s.scene) s.engine->destroy(s.scene);
@@ -120,6 +134,7 @@ void BenchApp::setNativeWindow(void* nativeWindow) {
     Impl& s = *impl_;
     if (!s.engine || s.headless) return;
     if (s.swapChain) {
+        s.drainFences();
         s.engine->destroy(s.swapChain);
         s.swapChain = nullptr;
         s.engine->flushAndWait();
@@ -190,10 +205,12 @@ bool BenchApp::frame(double realDt, int64_t hostCpuNs, int64_t displayNs, Therma
     const double t = session_->advance(realDt);
     s.world.update(t, s.frameCounter);
 
+    s.waitPrevious();
     ++s.frameCounter;
     if (s.renderer->beginFrame(s.swapChain)) {
         s.renderer->render(s.view);
         s.renderer->endFrame();
+        s.markSubmitted();
         ++s.renderedFrames;
         session_->record(s.frameCounter, hostCpuNs, displayNs, thermal, headroom);
         if (session_->phase() == BenchSession::Phase::Measure) {
@@ -219,6 +236,7 @@ bool BenchApp::renderAt(double sceneTime) {
     Impl& s = *impl_;
     if (!s.swapChain) return false;
     s.world.update(sceneTime, s.frameCounter);
+    s.waitPrevious();
     ++s.frameCounter;
     if (!s.renderer->beginFrame(s.swapChain)) return false;
     s.renderer->render(s.view);
@@ -230,6 +248,7 @@ bool BenchApp::renderAt(double sceneTime) {
                                                               backend::PixelDataType::UBYTE));
     }
     s.renderer->endFrame();
+    s.markSubmitted();
     return true;
 }
 

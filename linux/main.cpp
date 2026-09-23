@@ -264,9 +264,11 @@ int main(int argc, char** argv) {
     std::printf("\n%s  preset=%s  laps=%d valid=%d  method=%s\n", r.device.device.c_str(), r.preset.c_str(),
                 static_cast<int>(r.laps.size()), r.validLaps(),
                 r.method == bench::TimingMethod::Gpu ? "gpu" : "cpu+display");
+    std::printf("gpu timing coverage %.0f%%\n", r.gpuCoverage * 100.0);
     std::printf("avg %.1f fps   1%% low %.1f fps   p99 %.1f ms   gpu %.1f ms   cpu %.1f ms\n", r.all.avgFps, r.all.low1Fps,
                 r.all.p99Ms, r.all.gpuMsAvg, r.all.cpuMsAvg);
     for (size_t i = 0; i < r.sections.size(); ++i) {
+        if (r.sections[i].frames == 0) continue;
         std::printf("  %-10s avg %.1f fps  1%% low %.1f fps\n", r.sectionNames[i].c_str(), r.sections[i].avgFps,
                     r.sections[i].low1Fps);
     }

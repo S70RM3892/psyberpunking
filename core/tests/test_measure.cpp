@@ -138,3 +138,24 @@ TEST(Output, JsonHasSummary) {
     EXPECT_NE(js.find("\"score\": 987"), std::string::npos);
     EXPECT_NE(js.find("\"summary\""), std::string::npos);
 }
+
+TEST(Session, DrainWaitsForLateGpuTimes) {
+    // GPU時間が3フレーム遅れて届く場合でも、周回終了後の回収待ちで全フレームが埋まる
+    SceneConfig cfg = loadScene();
+    BenchSession::Options o;
+    o.lapDuration = 0.5;
+    o.warmup = false;
+    o.laps = 1;
+    BenchSession s(cfg, *cfg.findPreset("deck"), o);
+    uint32_t id = 0;
+    while (s.phase() != BenchSession::Phase::Done) {
+        s.advance(0.02);
+        s.record(id, 5000000, 16000000, Thermal::None);
+        if (id >= 3) s.resolve(id - 3, 20000000, 4000000);
+        ++id;
+    }
+    RunResult r = s.finish({}, "test");
+    EXPECT_EQ(r.method, TimingMethod::Gpu);
+    EXPECT_DOUBLE_EQ(r.gpuCoverage, 1.0);
+    EXPECT_NEAR(r.all.avgFps, 50.0, 0.5);
+}

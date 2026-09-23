@@ -71,6 +71,7 @@ struct RunResult {
     std::string backend = "vulkan";
     DeviceInfo device;
     TimingMethod method = TimingMethod::Gpu;
+    double gpuCoverage = 0;           // GPU時間が取れたフレームの割合 0..1
     std::vector<LapResult> laps;
     Stats all;                        // 有効な周回の全フレーム
     std::vector<Stats> sections;      // 同・区間別

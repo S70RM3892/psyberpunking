@@ -93,7 +93,12 @@ float BenchSession::progress() const {
 double BenchSession::advance(double realDt) {
     if (phase_ == Phase::Done) return sceneTime_;
     if (phase_ == Phase::Draining) {
-        if (--drainFrames_ <= 0) phase_ = Phase::Done;
+        // FrameInfo（GPU時間）は数フレーム遅れて届く。直近のフレームが埋まるか、上限に達したら終える
+        size_t pending = 0;
+        for (auto it = frames_.rbegin(); it != frames_.rend() && it - frames_.rbegin() < 16; ++it) {
+            pending += it->gpuNs > 0 ? 0 : 1;
+        }
+        if (--drainFrames_ <= 0 || pending == 0) phase_ = Phase::Done;
         return sceneTime_;
     }
     sceneTime_ += std::clamp(realDt, 0.0, opt_.maxFrameStep);
@@ -107,7 +112,7 @@ double BenchSession::advance(double realDt) {
         } else {
             // 最後のフレームの FrameInfo が届くまで少し描き続ける
             phase_ = Phase::Draining;
-            drainFrames_ = 8;
+            drainFrames_ = 30;
         }
     }
     return sceneTime_;
@@ -159,6 +164,7 @@ RunResult BenchSession::finish(const DeviceInfo& device, const std::string& appV
     size_t withGpu = 0;
     for (const auto& f : frames_) withGpu += f.gpuNs > 0 ? 1 : 0;
     r.method = (!frames_.empty() && withGpu * 2 >= frames_.size()) ? TimingMethod::Gpu : TimingMethod::CpuDisplay;
+    r.gpuCoverage = frames_.empty() ? 0.0 : static_cast<double>(withGpu) / static_cast<double>(frames_.size());
 
     struct Bucket {
         std::vector<double> frame, gpu, cpu;
@@ -270,6 +276,8 @@ std::string resultToJson(const RunResult& r, bool includeFrames) {
                    {"vulkan", r.device.vulkanVersion}, {"os", r.device.os}, {"refresh_hz", round2(r.device.refreshHz)},
                    {"host", r.device.host}};
     j["timing_method"] = r.method == TimingMethod::Gpu ? "gpu_frame_duration" : "cpu_and_display_interval";
+    // GPU時間が取れたフレームの割合。GPU方式でも欠けたフレームは max(CPU, 表示間隔) で埋めている
+    j["gpu_coverage"] = round2(r.gpuCoverage);
     j["score"] = r.score ? json(std::lround(*r.score)) : json(nullptr);
     if (!r.scoreNote.empty()) j["score_note"] = r.scoreNote;
     j["aborted"] = r.aborted;
